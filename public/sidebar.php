@@ -9,12 +9,10 @@ $role = $_SESSION['role'];
     <ul>
         <li><a href="/monitoring_system/public/dashboard.php"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
         <li><a href="#"><i class="fas fa-chart-bar"></i> Reports</a></li>
-        <li><a href="#"><i class="fas fa-bell"></i> Notifications</a></li>
         
         <?php if ($role === 'admin'): ?>
             <li><a href="/monitoring_system/admin/user_management.php"><i class="fas fa-users"></i> User Management</a></li>
             <li><a href="/monitoring_system/admin/training_list.php"><i class="fas fa-calendar-alt"></i> Training List</a></li>
-            <li><a href="#"><i class="fas fa-cog"></i> Settings</a></li>
         <?php endif; ?>
         
         <?php if ($role === 'unit_head'): ?>
@@ -23,9 +21,7 @@ $role = $_SESSION['role'];
         <?php endif; ?>
         
         <?php if ($role === 'employee'): ?>
-            <li><a href="#"><i class="fas fa-tasks"></i> My Tasks</a></li>
-            <li><a href="#"><i class="fas fa-clock"></i> Time Log</a></li>
-            <li><a href="#"><i class="fas fa-calendar-check"></i> My Trainings</a></li>
+            <li><a href="/monitoring_system/public/my_trainings.php"><i class="fas fa-calendar-check"></i> My Trainings</a></li>
         <?php endif; ?>
         
         <li><a href="/monitoring_system/public/logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a></li>

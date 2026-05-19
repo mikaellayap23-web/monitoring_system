@@ -1,7 +1,7 @@
 <?php
 require_once '../public/config/database.php';
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
+if (!isset($_SESSION['user_id'])) {
     header('Location: ../public/login.php');
     exit;
 }
@@ -10,7 +10,7 @@ if (isset($_GET['delete'])) {
     $id = $_GET['delete'];
     $stmt = $pdo->prepare("DELETE FROM trainings WHERE id = ?");
     $stmt->execute([$id]);
-    header('Location: training_list.php?msg=deleted');
+    header('Location: my_trainings.php?msg=deleted');
     exit;
 }
 
@@ -88,7 +88,7 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Training List - Admin</title>
+    <title>My Trainings</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/training_list.css">
 </head>
@@ -97,8 +97,8 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
         <?php include '../public/sidebar.php'; ?>
         <div class="main-content">
             <div class="header">
-                <h1><i class="fas fa-calendar-alt"></i> Training List Management</h1>
-                <div><i class="fas fa-user-shield"></i> Admin: <?= htmlspecialchars($_SESSION['username']) ?></div>
+                <h1><i class="fas fa-calendar-alt"></i> My Trainings</h1>
+                <div><i class="fas fa-user"></i> Employee: <?= htmlspecialchars($_SESSION['username']) ?></div>
             </div>
             
             <?php if ($success_msg): ?>
@@ -225,13 +225,13 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                     <input type="text" name="search" placeholder="Search by employee or training title..." value="<?= htmlspecialchars($search) ?>">
                     <button type="submit" class="btn-submit"><i class="fas fa-search"></i> Search</button>
                     <?php if ($search): ?>
-                        <a href="training_list.php"><i class="fas fa-times"></i> Clear</a>
+                        <a href="my_trainings.php"><i class="fas fa-times"></i> Clear</a>
                     <?php endif; ?>
                 </form>
             </div>
             
             <div class="data-table">
-                 <table>
+                <table>
                     <thead>
                          <tr>
                             <th>ID</th>

@@ -10,6 +10,7 @@ $user_id = $_SESSION['user_id'];
 $username = $_SESSION['username'];
 $role = $_SESSION['role'];
 
+// For admin: get filter values
 $filter_division = $_GET['division'] ?? '';
 $filter_department = $_GET['department'] ?? '';
 $filter_section = $_GET['section'] ?? '';
@@ -18,49 +19,75 @@ $filter_unit = $_GET['unit'] ?? '';
 $where_clauses = [];
 $params = [];
 
-if (!empty($filter_division)) {
-    $where_clauses[] = "division = ?";
-    $params[] = $filter_division;
-}
-if (!empty($filter_department)) {
-    $where_clauses[] = "department = ?";
-    $params[] = $filter_department;
-}
-if (!empty($filter_section)) {
-    $where_clauses[] = "section = ?";
-    $params[] = $filter_section;
-}
-if (!empty($filter_unit)) {
-    $where_clauses[] = "unit = ?";
-    $params[] = $filter_unit;
+// Only apply filters for non-employees
+if ($role !== 'employee') {
+    if (!empty($filter_division)) {
+        $where_clauses[] = "division = ?";
+        $params[] = $filter_division;
+    }
+    if (!empty($filter_department)) {
+        $where_clauses[] = "department = ?";
+        $params[] = $filter_department;
+    }
+    if (!empty($filter_section)) {
+        $where_clauses[] = "section = ?";
+        $params[] = $filter_section;
+    }
+    if (!empty($filter_unit)) {
+        $where_clauses[] = "unit = ?";
+        $params[] = $filter_unit;
+    }
+} else {
+    // Employee: only show their own data
+    $where_clauses[] = "user_id = ?";
+    $params[] = $user_id;
 }
 
 $where_sql = !empty($where_clauses) ? "WHERE " . implode(" AND ", $where_clauses) : "";
-$filter_sql = !empty($where_clauses) ? "AND " . implode(" AND ", $where_clauses) : "";
 
-$divisions = $pdo->query("SELECT DISTINCT division FROM users WHERE division IS NOT NULL AND division != '' ORDER BY division")->fetchAll();
-$departments = $pdo->query("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department != '' ORDER BY department")->fetchAll();
-$sections = $pdo->query("SELECT DISTINCT section FROM users WHERE section IS NOT NULL AND section != '' ORDER BY section")->fetchAll();
-$units = $pdo->query("SELECT DISTINCT unit FROM users WHERE unit IS NOT NULL AND unit != '' ORDER BY unit")->fetchAll();
+// For admin: get filter dropdown options
+$divisions = [];
+$departments = [];
+$sections = [];
+$units = [];
+
+if ($role !== 'employee') {
+    $divisions = $pdo->query("SELECT DISTINCT division FROM users WHERE division IS NOT NULL AND division != '' ORDER BY division")->fetchAll();
+    $departments = $pdo->query("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department != '' ORDER BY department")->fetchAll();
+    $sections = $pdo->query("SELECT DISTINCT section FROM users WHERE section IS NOT NULL AND section != '' ORDER BY section")->fetchAll();
+    $units = $pdo->query("SELECT DISTINCT unit FROM users WHERE unit IS NOT NULL AND unit != '' ORDER BY unit")->fetchAll();
+}
 
 $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM trainings $where_sql");
 $stmt->execute($params);
 $total_trainings = $stmt->fetch()['total'];
 
-$stmt = $pdo->prepare("SELECT training_type, COUNT(*) as count FROM trainings $where_sql GROUP BY training_type");
-$stmt->execute($params);
-$type_counts = $stmt->fetchAll();
-$internal_count = 0;
-$external_count = 0;
-foreach ($type_counts as $tc) {
-    if ($tc['training_type'] == 'Internal') $internal_count = $tc['count'];
-    if ($tc['training_type'] == 'External') $external_count = $tc['count'];
+$internal_params = $params;
+$internal_sql = "SELECT COUNT(*) as total FROM trainings";
+if (!empty($where_clauses)) {
+    $internal_sql .= " $where_sql AND training_type = 'Internal'";
+} else {
+    $internal_sql .= " WHERE training_type = 'Internal'";
 }
+$stmt = $pdo->prepare($internal_sql);
+$stmt->execute($internal_params);
+$internal_count = $stmt->fetch()['total'];
+
+$external_params = $params;
+$external_sql = "SELECT COUNT(*) as total FROM trainings";
+if (!empty($where_clauses)) {
+    $external_sql .= " $where_sql AND training_type = 'External'";
+} else {
+    $external_sql .= " WHERE training_type = 'External'";
+}
+$stmt = $pdo->prepare($external_sql);
+$stmt->execute($external_params);
+$external_count = $stmt->fetch()['total'];
 
 $ob_ot_params = $params;
-$ob_ot_sql = "SELECT COUNT(*) as total FROM trainings $where_sql";
+$ob_ot_sql = "SELECT COUNT(*) as total FROM trainings";
 if (!empty($where_clauses)) {
-    $ob_ot_sql .= " AND ob_ot IS NOT NULL AND ob_ot != ''";
+    $ob_ot_sql .= " $where_sql AND ob_ot IS NOT NULL AND ob_ot != ''";
 } else {
     $ob_ot_sql .= " WHERE ob_ot IS NOT NULL AND ob_ot != ''";
 }
@@ -69,9 +96,9 @@ $stmt->execute($ob_ot_params);
 $ob_ot_count = $stmt->fetch()['total'];
 
 $ptr_params = $params;
-$ptr_sql = "SELECT COUNT(*) as total, SUM(ptr_submitted) as submitted FROM trainings $where_sql";
+$ptr_sql = "SELECT COUNT(*) as total, SUM(ptr_submitted) as submitted FROM trainings";
 if (!empty($where_clauses)) {
-    $ptr_sql .= " AND training_type = 'External'";
+    $ptr_sql .= " $where_sql AND training_type = 'External'";
 } else {
     $ptr_sql .= " WHERE training_type = 'External'";
 }
@@ -82,45 +109,73 @@ $ptr_total = $ptr_data['total'] ?? 0;
 $ptr_submitted = $ptr_data['submitted'] ?? 0;
 $ptr_percentage = $ptr_total > 0 ? round(($ptr_submitted / $ptr_total) * 100) : 0;
 
-$stmt = $pdo->prepare("SELECT COUNT(*) as total_employees FROM users WHERE role != 'admin'");
-$stmt->execute();
-$total_employees = $stmt->fetch()['total_employees'];
-
-$stmt = $pdo->prepare("SELECT COUNT(DISTINCT user_id) as attended FROM trainings $where_sql");
-$stmt->execute($params);
-$attended_employees = $stmt->fetch()['attended'];
-$not_attended = $total_employees - $attended_employees;
-$attended_percentage = $total_employees > 0 ? round(($attended_employees / $total_employees) * 100) : 0;
-
-$bar_sql = "SELECT 
-    COALESCE(u.department, 'Unassigned') as name,
-    COUNT(DISTINCT u.id) as total_employees,
-    COUNT(DISTINCT t.user_id) as attended
-    FROM users u
-    LEFT JOIN trainings t ON u.id = t.user_id
-    WHERE u.role != 'admin'";
-if (!empty($filter_division)) {
-    $bar_sql .= " AND u.division = '" . addslashes($filter_division) . "'";
-}
-if (!empty($filter_department)) {
-    $bar_sql .= " AND u.department = '" . addslashes($filter_department) . "'";
-}
-if (!empty($filter_section)) {
-    $bar_sql .= " AND u.section = '" . addslashes($filter_section) . "'";
-}
-if (!empty($filter_unit)) {
-    $bar_sql .= " AND u.unit = '" . addslashes($filter_unit) . "'";
-}
-$bar_sql .= " GROUP BY COALESCE(u.department, 'Unassigned') ORDER BY name";
-$bar_data = $pdo->query($bar_sql)->fetchAll();
-
+// Only calculate these for admin view (for charts and table)
+$total_employees = 0;
+$attended_employees = 0;
+$not_attended = 0;
+$attended_percentage = 0;
 $bar_labels = [];
 $bar_attended = [];
 $bar_not_attended = [];
-foreach ($bar_data as $row) {
-    $bar_labels[] = $row['name'];
-    $bar_attended[] = $row['attended'];
-    $bar_not_attended[] = $row['total_employees'] - $row['attended'];
+$training_data = [];
+
+if ($role !== 'employee') {
+    $stmt = $pdo->prepare("SELECT COUNT(*) as total_employees FROM users WHERE role != 'admin'");
+    $stmt->execute();
+    $total_employees = $stmt->fetch()['total_employees'];
+
+    $stmt = $pdo->prepare("SELECT COUNT(DISTINCT user_id) as attended FROM trainings $where_sql");
+    $stmt->execute($params);
+    $attended_employees = $stmt->fetch()['attended'];
+    $not_attended = $total_employees - $attended_employees;
+    $attended_percentage = $total_employees > 0 ? round(($attended_employees / $total_employees) * 100) : 0;
+
+    $bar_sql = "SELECT 
+        COALESCE(u.department, 'Unassigned') as name,
+        COUNT(DISTINCT u.id) as total_employees,
+        COUNT(DISTINCT t.user_id) as attended
+        FROM users u
+        LEFT JOIN trainings t ON u.id = t.user_id
+        WHERE u.role != 'admin'";
+    if (!empty($filter_division)) {
+        $bar_sql .= " AND u.division = '" . addslashes($filter_division) . "'";
+    }
+    if (!empty($filter_department)) {
+        $bar_sql .= " AND u.department = '" . addslashes($filter_department) . "'";
+    }
+    if (!empty($filter_section)) {
+        $bar_sql .= " AND u.section = '" . addslashes($filter_section) . "'";
+    }
+    if (!empty($filter_unit)) {
+        $bar_sql .= " AND u.unit = '" . addslashes($filter_unit) . "'";
+    }
+    $bar_sql .= " GROUP BY COALESCE(u.department, 'Unassigned') ORDER BY name";
+    $bar_data = $pdo->query($bar_sql)->fetchAll();
+
+    foreach ($bar_data as $row) {
+        $bar_labels[] = $row['name'];
+        $bar_attended[] = $row['attended'];
+        $bar_not_attended[] = $row['total_employees'] - $row['attended'];
+    }
+
+    $table_sql = "SELECT 
+        t.employee_name,
+        t.training_type,
+        t.division,
+        t.department,
+        t.section,
+        t.unit,
+        t.title_of_activity,
+        t.date_from,
+        t.date_to,
+        t.ob_ot,
+        t.ptr_submitted
+        FROM trainings t
+        $where_sql
+        ORDER BY t.created_at DESC";
+    $stmt = $pdo->prepare($table_sql);
+    $stmt->execute($params);
+    $training_data = $stmt->fetchAll();
 }
 ?>
 <!DOCTYPE html>
@@ -130,7 +185,10 @@ foreach ($bar_data as $row) {
     <title>Dashboard - Monitoring System</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/sidebar.css">
+    <link rel="stylesheet" href="../assets/css/dashboard.css">
+    <?php if ($role !== 'employee'): ?>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <?php endif; ?>
     <style>
         .filters-bar {
             background: white;
@@ -156,7 +214,7 @@ foreach ($bar_data as $row) {
             color: #1B3C53;
             font-size: 12px;
         }
-        .filter-group select, .filter-group input {
+        .filter-group select {
             width: 100%;
             padding: 8px 12px;
             border: 1px solid #ddd;
@@ -172,9 +230,6 @@ foreach ($bar_data as $row) {
         }
         .filter-group button:hover {
             background: #234C6A;
-        }
-        .clear-filter {
-            background: #666;
         }
         .charts-row {
             display: grid;
@@ -196,6 +251,70 @@ foreach ($bar_data as $row) {
         canvas {
             max-height: 300px;
         }
+        .data-table {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid rgba(210,193,182,0.3);
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        .data-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .data-table th {
+            background: #1B3C53;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-size: 12px;
+        }
+        .data-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+            font-size: 12px;
+        }
+        .data-table tr:hover {
+            background: #f5f5f5;
+        }
+        .table-header {
+            padding: 15px 20px;
+            background: #f8fafc;
+            border-bottom: 1px solid rgba(210,193,182,0.3);
+            font-weight: 600;
+            color: #1B3C53;
+        }
+        .ptr-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .ptr-submitted {
+            background: #d4edda;
+            color: #155724;
+        }
+        .ptr-pending {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .ptr-na {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+        .employee-welcome {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(210,193,182,0.3);
+            text-align: center;
+        }
+        .employee-welcome h2 {
+            color: #1B3C53;
+            margin-bottom: 10px;
+        }
         @media (max-width: 768px) {
             .charts-row {
                 grid-template-columns: 1fr;
@@ -213,6 +332,13 @@ foreach ($bar_data as $row) {
                 <div class="user-info"><i class="fas fa-user-shield"></i> <?= htmlspecialchars($username) ?> | <strong><?= ucfirst($role) ?></strong></div>
             </div>
             
+            <?php if ($role === 'employee'): ?>
+            <div class="employee-welcome">
+                <h2>Welcome, <?= htmlspecialchars($username) ?>!</h2>
+                <p>Here's your personal training summary.</p>
+            </div>
+            <?php endif; ?>
+            
             <div class="dashboard-widgets">
                 <div class="widget">
                     <i class="fas fa-graduation-cap"></i>
@@ -220,9 +346,14 @@ foreach ($bar_data as $row) {
                     <p><?= $total_trainings ?></p>
                 </div>
                 <div class="widget">
-                    <i class="fas fa-chart-pie"></i>
-                    <h3>INT / EXT</h3>
-                    <p>Int: <?= $internal_count ?> | Ext: <?= $external_count ?></p>
+                    <i class="fas fa-calendar-alt"></i>
+                    <h3>INTERNAL TRAININGS</h3>
+                    <p><?= $internal_count ?></p>
+                </div>
+                <div class="widget">
+                    <i class="fas fa-globe"></i>
+                    <h3>EXTERNAL TRAININGS</h3>
+                    <p><?= $external_count ?></p>
                 </div>
                 <div class="widget">
                     <i class="fas fa-clock"></i>
@@ -236,6 +367,7 @@ foreach ($bar_data as $row) {
                 </div>
             </div>
             
+            <?php if ($role !== 'employee'): ?>
             <div class="filters-bar">
                 <form method="get" class="filters-form">
                     <div class="filter-group">
@@ -297,77 +429,136 @@ foreach ($bar_data as $row) {
                     <canvas id="barChart"></canvas>
                 </div>
             </div>
+            
+            <div class="data-table">
+                <div class="table-header">
+                    <i class="fas fa-table"></i> Training Data (Filtered Results)
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Division</th>
+                            <th>Department</th>
+                            <th>Section</th>
+                            <th>Unit</th>
+                            <th>Employee Name</th>
+                            <th>Type</th>
+                            <th>Title of Activity</th>
+                            <th>Date Range</th>
+                            <th>OB/OT</th>
+                            <th>PTR Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (count($training_data) > 0): ?>
+                            <?php foreach ($training_data as $row): ?>
+                                <tr>
+                                    <td><?= htmlspecialchars($row['division'] ?? '-') ?></td>
+                                    <td><?= htmlspecialchars($row['department'] ?? '-') ?></td>
+                                    <td><?= htmlspecialchars($row['section'] ?? '-') ?></td>
+                                    <td><?= htmlspecialchars($row['unit'] ?? '-') ?></td>
+                                    <td><?= htmlspecialchars($row['employee_name']) ?></td>
+                                    <td>
+                                        <span style="padding:4px 8px; border-radius:12px; background:<?= $row['training_type'] == 'Internal' ? '#e3f2fd' : '#e8f5e9' ?>; font-size:11px;">
+                                            <?= $row['training_type'] ?>
+                                        </span>
+                                    </td>
+                                    <td><?= htmlspecialchars($row['title_of_activity']) ?></td>
+                                    <td><?= date('M d, Y', strtotime($row['date_from'])) ?> - <?= date('M d, Y', strtotime($row['date_to'])) ?></td>
+                                    <td><?= $row['ob_ot'] ?: '-' ?></td>
+                                    <td>
+                                        <?php if ($row['training_type'] == 'External'): ?>
+                                            <span class="ptr-badge <?= $row['ptr_submitted'] ? 'ptr-submitted' : 'ptr-pending' ?>">
+                                                <?= $row['ptr_submitted'] ? 'Submitted' : 'Pending' ?>
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="ptr-badge ptr-na">N/A</span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="10" style="text-align:center; padding:40px;">
+                                    <i class="fas fa-inbox"></i> No training records found
+                                </td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+            
+            <script>
+                const pieCtx = document.getElementById('pieChart').getContext('2d');
+                new Chart(pieCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: ['Attended Training', 'Not Attended'],
+                        datasets: [{
+                            data: [<?= $attended_employees ?>, <?= $not_attended ?>],
+                            backgroundColor: ['#234C6A', '#D2C1B6'],
+                            borderColor: ['#1B3C53', '#456882'],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            }
+                        }
+                    }
+                });
+                
+                const barCtx = document.getElementById('barChart').getContext('2d');
+                new Chart(barCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: <?= json_encode($bar_labels) ?>,
+                        datasets: [
+                            {
+                                label: 'Attended Training',
+                                data: <?= json_encode($bar_attended) ?>,
+                                backgroundColor: '#234C6A',
+                                borderRadius: 4
+                            },
+                            {
+                                label: 'Not Attended',
+                                data: <?= json_encode($bar_not_attended) ?>,
+                                backgroundColor: '#D2C1B6',
+                                borderRadius: 4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Number of Employees'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Department'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'top'
+                            }
+                        }
+                    }
+                });
+            </script>
+            <?php endif; ?>
         </div>
     </div>
-    
-    <script>
-        const pieCtx = document.getElementById('pieChart').getContext('2d');
-        new Chart(pieCtx, {
-            type: 'pie',
-            data: {
-                labels: ['Attended Training', 'Not Attended'],
-                datasets: [{
-                    data: [<?= $attended_employees ?>, <?= $not_attended ?>],
-                    backgroundColor: ['#234C6A', '#D2C1B6'],
-                    borderColor: ['#1B3C53', '#456882'],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom'
-                    }
-                }
-            }
-        });
-        
-        const barCtx = document.getElementById('barChart').getContext('2d');
-        new Chart(barCtx, {
-            type: 'bar',
-            data: {
-                labels: <?= json_encode($bar_labels) ?>,
-                datasets: [
-                    {
-                        label: 'Attended Training',
-                        data: <?= json_encode($bar_attended) ?>,
-                        backgroundColor: '#234C6A',
-                        borderRadius: 4
-                    },
-                    {
-                        label: 'Not Attended',
-                        data: <?= json_encode($bar_not_attended) ?>,
-                        backgroundColor: '#D2C1B6',
-                        borderRadius: 4
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Number of Employees'
-                        }
-                    },
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Department'
-                        }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        position: 'top'
-                    }
-                }
-            }
-        });
-    </script>
 </body>
 </html>
