@@ -19,6 +19,14 @@ if (isset($_GET['delete'])) {
 $success_msg = '';
 $error_msg = '';
 
+// Fetch unique divisions for dropdown
+$divisionStmt = $pdo->query("SELECT DISTINCT division FROM users WHERE division IS NOT NULL ORDER BY division");
+$divisions = $divisionStmt->fetchAll();
+
+// Fetch unique department/section/unit combinations for dropdown
+$deptSectionUnitStmt = $pdo->query("SELECT DISTINCT department, section, unit FROM users WHERE department IS NOT NULL AND section IS NOT NULL ORDER BY department, section, unit");
+$deptSectionUnitOptions = $deptSectionUnitStmt->fetchAll();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_user'])) {
         $username = $_POST['username'];
@@ -27,9 +35,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password = $_POST['password'];
         $role = $_POST['role'];
         $division = $_POST['division'];
-        $department = $_POST['department'];
-        $section = $_POST['section'];
-        $unit = $_POST['unit'];
+
+        // Split Department/Section/Unit dropdown value
+        $dept_section_unit = $_POST['dept_section_unit'];
+        $parts = explode('/', $dept_section_unit);
+        $department = $parts[0] ?? null;
+        $section = $parts[1] ?? null;
+        $unit = $parts[2] ?? null;
         
         $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
         $stmt->execute([$username, $email]);
@@ -51,9 +63,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $full_name = $_POST['full_name'];
         $role = $_POST['role'];
         $division = $_POST['division'];
-        $department = $_POST['department'];
-        $section = $_POST['section'];
-        $unit = $_POST['unit'];
+
+        // Split Department/Section/Unit dropdown value for edit
+        $dept_section_unit = $_POST['dept_section_unit'];
+        $parts = explode('/', $dept_section_unit);
+        $department = $parts[0] ?? null;
+        $section = $parts[1] ?? null;
+        $unit = $parts[2] ?? null;
         
         $stmt = $pdo->prepare("UPDATE users SET full_name = ?, role = ?, division = ?, department = ?, section = ?, unit = ? WHERE id = ?");
         $stmt->execute([$full_name, $role, $division, $department, $section, $unit, $id]);
@@ -75,7 +91,7 @@ if (isset($_GET['edit'])) {
     <meta charset="UTF-8">
     <title>User Management - Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-	<link rel="stylesheet" href="../assets/css/user_management.css">
+    <link rel="stylesheet" href="../assets/css/user_management.css">
 </head>
 <body>
     <div class="app-container">
@@ -132,24 +148,46 @@ if (isset($_GET['edit'])) {
                                 <option value="admin" <?= ($edit_user['role'] ?? '') === 'admin' ? 'selected' : '' ?>>Admin</option>
                             </select>
                         </div>
+                        
+                        <!-- UPDATED: Division as dropdown -->
                         <div class="form-group">
                             <label><i class="fas fa-building"></i> Division *</label>
-                            <input type="text" name="division" value="<?= $edit_user['division'] ?? '' ?>" required>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-building"></i> Department</label>
-                            <input type="text" name="department" value="<?= $edit_user['department'] ?? '' ?>">
+                            <select name="division" required>
+                                <option value="">-- Select Division --</option>
+                                <?php foreach ($divisions as $div): ?>
+                                    <option value="<?= htmlspecialchars($div['division']) ?>" 
+                                        <?= ($edit_user['division'] ?? '') === $div['division'] ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($div['division']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                     </div>
                     
                     <div class="form-row">
+                        <!-- Combined Department/Section/Unit dropdown -->
                         <div class="form-group">
-                            <label><i class="fas fa-layer-group"></i> Section *</label>
-                            <input type="text" name="section" value="<?= $edit_user['section'] ?? '' ?>" required>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-users"></i> Unit</label>
-                            <input type="text" name="unit" value="<?= $edit_user['unit'] ?? '' ?>">
+                            <label><i class="fas fa-sitemap"></i> Department/Section/Unit *</label>
+                            <select name="dept_section_unit" required>
+                                <option value="">-- Select Department/Section/Unit --</option>
+                                <?php foreach ($deptSectionUnitOptions as $option): ?>
+                                    <?php 
+                                    $combined = htmlspecialchars($option['department']) . '/' . 
+                                                htmlspecialchars($option['section']) . '/' . 
+                                                htmlspecialchars($option['unit']);
+                                    $selected = '';
+                                    if ($edit_user) {
+                                        $userCombined = htmlspecialchars($edit_user['department'] ?? '') . '/' . 
+                                                       htmlspecialchars($edit_user['section'] ?? '') . '/' . 
+                                                       htmlspecialchars($edit_user['unit'] ?? '');
+                                        if ($userCombined === $combined) {
+                                            $selected = 'selected';
+                                        }
+                                    }
+                                    ?>
+                                    <option value="<?= $combined ?>" <?= $selected ?>><?= $combined ?></option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                     </div>
                     
@@ -172,7 +210,7 @@ if (isset($_GET['edit'])) {
                             <th>Email</th>
                             <th>Role</th>
                             <th>Division</th>
-                            <th>Section</th>
+                            <th>Department/Section/Unit</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -185,7 +223,7 @@ if (isset($_GET['edit'])) {
                                 <td><?= htmlspecialchars($user['email']) ?></td>
                                 <td><?= $user['role'] ?></td>
                                 <td><?= htmlspecialchars($user['division'] ?? '') ?></td>
-                                <td><?= htmlspecialchars($user['section'] ?? '') ?></td>
+                                <td><?= htmlspecialchars(($user['department'] ?? '') . '/' . ($user['section'] ?? '') . '/' . ($user['unit'] ?? '')) ?></td>
                                 <td>
                                     <a href="?edit=<?= $user['id'] ?>" class="btn-edit"><i class="fas fa-edit"></i> Edit</a>
                                     <?php if ($user['id'] != $_SESSION['user_id']): ?>

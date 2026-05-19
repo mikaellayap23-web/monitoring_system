@@ -16,8 +16,8 @@ $role = $_SESSION['role'];
         <?php endif; ?>
         
         <?php if ($role === 'unit_head'): ?>
-            <li><a href="#"><i class="fas fa-users"></i> My Unit</a></li>
-            <li><a href="#"><i class="fas fa-calendar-alt"></i> Unit Trainings</a></li>
+              <li><a href="/monitoring_system/public/users_management.php"><i class="fas fa-users"></i> User Management</a></li>
+            <li><a href="/monitoring_system/public/trainings.php"><i class="fas fa-calendar-alt"></i> Trainings</a></li>
         <?php endif; ?>
         
         <?php if ($role === 'employee'): ?>
