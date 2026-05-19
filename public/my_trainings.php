@@ -1,8 +1,8 @@
 <?php
-require_once '../public/config/database.php';
+require_once 'config/database.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header('Location: ../public/login.php');
+    header('Location: login.php');
     exit;
 }
 
@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
         $ptr_deadline = $_POST['ptr_deadline'];
         
         if (isset($_FILES['ptr_file']) && $_FILES['ptr_file']['error'] === 0) {
-            $upload_dir = '../public/uploads/ptr_reports/';
+            $upload_dir = 'uploads/ptr_reports/';
             if (!file_exists($upload_dir)) {
                 mkdir($upload_dir, 0777, true);
             }
@@ -76,11 +76,16 @@ if (isset($_POST['update_ptr'])) {
 
 $search = $_GET['search'] ?? '';
 $query = "SELECT t.*, u.username FROM trainings t LEFT JOIN users u ON t.user_id = u.id";
+$search_params = [];
 if ($search) {
-    $query .= " WHERE t.employee_name LIKE '%$search%' OR t.title_of_activity LIKE '%$search%'";
+    $query .= " WHERE t.employee_name LIKE ? OR t.title_of_activity LIKE ?";
+    $search_params[] = "%$search%";
+    $search_params[] = "%$search%";
 }
 $query .= " ORDER BY t.created_at DESC";
-$trainings = $pdo->query($query)->fetchAll();
+$stmt = $pdo->prepare($query);
+$stmt->execute($search_params);
+$trainings = $stmt->fetchAll();
 
 $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY username")->fetchAll();
 ?>
@@ -94,7 +99,7 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
 </head>
 <body>
     <div class="app-container">
-        <?php include '../public/sidebar.php'; ?>
+        <?php include 'sidebar.php'; ?>
         <div class="main-content">
             <div class="header">
                 <h1><i class="fas fa-calendar-alt"></i> My Trainings</h1>
@@ -268,7 +273,7 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                                             <label><i class="fas fa-check"></i> Submitted</label>
                                         </form>
                                         <?php if ($training['ptr_file']): ?>
-                                            <br><a href="../public/<?= $training['ptr_file'] ?>" target="_blank"><i class="fas fa-file-pdf"></i> View File</a>
+                                            <br><a href="<?= $training['ptr_file'] ?>" target="_blank"><i class="fas fa-file-pdf"></i> View File</a>
                                         <?php endif; ?>
                                     <?php else: ?>
                                         N/A

@@ -76,11 +76,16 @@ if (isset($_POST['update_ptr'])) {
 
 $search = $_GET['search'] ?? '';
 $query = "SELECT t.*, u.username FROM trainings t LEFT JOIN users u ON t.user_id = u.id";
+$search_params = [];
 if ($search) {
-    $query .= " WHERE t.employee_name LIKE '%$search%' OR t.title_of_activity LIKE '%$search%'";
+    $query .= " WHERE t.employee_name LIKE ? OR t.title_of_activity LIKE ?";
+    $search_params[] = "%$search%";
+    $search_params[] = "%$search%";
 }
 $query .= " ORDER BY t.created_at DESC";
-$trainings = $pdo->query($query)->fetchAll();
+$stmt = $pdo->prepare($query);
+$stmt->execute($search_params);
+$trainings = $stmt->fetchAll();
 
 $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY username")->fetchAll();
 ?>

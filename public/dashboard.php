@@ -137,20 +137,27 @@ if ($role !== 'employee') {
         FROM users u
         LEFT JOIN trainings t ON u.id = t.user_id
         WHERE u.role != 'admin'";
+    $bar_params = [];
     if (!empty($filter_division)) {
-        $bar_sql .= " AND u.division = '" . addslashes($filter_division) . "'";
+        $bar_sql .= " AND u.division = ?";
+        $bar_params[] = $filter_division;
     }
     if (!empty($filter_department)) {
-        $bar_sql .= " AND u.department = '" . addslashes($filter_department) . "'";
+        $bar_sql .= " AND u.department = ?";
+        $bar_params[] = $filter_department;
     }
     if (!empty($filter_section)) {
-        $bar_sql .= " AND u.section = '" . addslashes($filter_section) . "'";
+        $bar_sql .= " AND u.section = ?";
+        $bar_params[] = $filter_section;
     }
     if (!empty($filter_unit)) {
-        $bar_sql .= " AND u.unit = '" . addslashes($filter_unit) . "'";
+        $bar_sql .= " AND u.unit = ?";
+        $bar_params[] = $filter_unit;
     }
     $bar_sql .= " GROUP BY COALESCE(u.department, 'Unassigned') ORDER BY name";
-    $bar_data = $pdo->query($bar_sql)->fetchAll();
+    $stmt = $pdo->prepare($bar_sql);
+    $stmt->execute($bar_params);
+    $bar_data = $stmt->fetchAll();
 
     foreach ($bar_data as $row) {
         $bar_labels[] = $row['name'];
