@@ -33,28 +33,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
     $venue = $_POST['venue'];
     $hospital_order = $_POST['hospital_order'];
     $remarks = $_POST['remarks'];
-    $ob_ot = $_POST['ob_ot']; // OB/OT is now always present
+    $ob_ot = $_POST['ob_ot'];
     
+    // Set all external fields to null since we're not using them
     $date_filed = null;
     $ptr_deadline = null;
     $ptr_file = null;
-    
-    if ($training_type === 'External') {
-        $date_filed = $_POST['date_filed'];
-        $ptr_deadline = $_POST['ptr_deadline'];
-        
-        if (isset($_FILES['ptr_file']) && $_FILES['ptr_file']['error'] === 0) {
-            $upload_dir = '../public/uploads/ptr_reports/';
-            if (!file_exists($upload_dir)) {
-                mkdir($upload_dir, 0777, true);
-            }
-            $file_name = time() . '_' . $_FILES['ptr_file']['name'];
-            $target_file = $upload_dir . $file_name;
-            if (move_uploaded_file($_FILES['ptr_file']['tmp_name'], $target_file)) {
-                $ptr_file = 'uploads/ptr_reports/' . $file_name;
-            }
-        }
-    }
     
     $stmt = $pdo->prepare("INSERT INTO trainings (user_id, training_type, division, department, section, unit, title_of_activity, date_from, date_to, venue, hospital_order, date_filed, ob_ot, ptr_deadline, ptr_file, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     
@@ -95,6 +79,182 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
     <title>Training List - Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/training_list.css">
+    <style>
+        /* Modal Styles - Matching user_management.php color #1B3C53 */
+        .btn-open-modal {
+            background: #1B3C53;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            transition: background 0.3s;
+        }
+        
+        .btn-open-modal:hover {
+            background: #0f2a3a;
+        }
+        
+        .btn-open-modal i {
+            margin-right: 8px;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+            animation: fadeIn 0.3s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .modal-content {
+            background-color: #fff;
+            margin: 2% auto;
+            padding: 0;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 900px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            animation: slideDown 0.3s;
+            max-height: 90%;
+            overflow-y: auto;
+        }
+        
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .modal-header {
+            padding: 15px 20px;
+            background: #1B3C53;
+            color: white;
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+        
+        .close-modal {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        
+        .close-modal:hover {
+            color: #ddd;
+            transform: scale(1.1);
+        }
+        
+        .modal-body {
+            padding: 25px;
+        }
+        
+        /* Style the submit button in modal to match user_management */
+        .modal-body .btn-submit {
+            background: #1B3C53;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        
+        .modal-body .btn-submit:hover {
+            background: #0f2a3a;
+        }
+        
+        /* Form styling to match user_management */
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .form-group label i {
+            margin-right: 8px;
+            color: #1B3C53;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #1B3C53;
+            box-shadow: 0 0 0 2px rgba(27, 60, 83, 0.1);
+        }
+        
+        /* Adjust padding for specific fields */
+        .form-group select[name="ob_ot"],
+        .form-group input[name="hospital_order"] {
+            padding: 10px;
+        }
+        
+        .info-box {
+            background: #e8f4fd;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #1B3C53;
+        }
+        
+        .info-box i {
+            color: #1B3C53;
+            margin-right: 10px;
+        }
+    </style>
 </head>
 <body>
     <div class="app-container">
@@ -112,115 +272,107 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                 <div class="alert-error"><i class="fas fa-exclamation-triangle"></i> <?= $error_msg ?></div>
             <?php endif; ?>
             
-            <div class="section-card">
-                <h3><i class="fas fa-plus-circle"></i> Add New Training</h3>
-                <form method="post" enctype="multipart/form-data">
-                    <div class="form-row">
-
-                    <div class="form-group">
-                             <label><i class="fas fa-building"></i> Division *</label>
-                             <select name="division" required>
-                                 <option value="">Select Division</option>
-                                 <option value="nursing service">nursing service</option>
-                                 <option value="medical service">medical service</option>
-                                 <option value="HOPSS (HOSPITAL OPERATIONS AND PATIENT SUPPORT SERVICE)">HOPSS (HOSPITAL OPERATIONS AND PATIENT SUPPORT SERVICE)</option>
-                                 <option value="ALLIED HEALTH PROFESSIONAL SERVICE">ALLIED HEALTH PROFESSIONAL SERVICE</option>
-                                 <option value="FINANCES">FINANCES</option>
-                             </select>
-                         </div>
-                         <div class="form-group">
-                             <label><i class="fas fa-building"></i> Department/Section/Unit *</label>
-                             <select name="department_section" id="department_section" required>
-                                 <option value="">Select Department/Section/Unit</option>
-                                 <!-- Options will be added dynamically or you can add them here -->
-                             </select>
-                         </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-user"></i> Employee *</label>
-                            <select name="user_id" required>
-                                <option value="">Select Employee</option>
-                                <?php foreach ($users as $user): ?>
-                                    <option value="<?= $user['id'] ?>"><?= htmlspecialchars($user['full_name'] ?: $user['username']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-tag"></i> Training Type *</label>
-                            <select name="training_type" id="training_type" required onchange="toggleExternalFields()">
-                                <option value="Internal">Internal</option>
-                                <option value="External">External</option>
-                            </select>
-                        </div>
-                    </div>                    
-        <div class="form-row">
-                         <div class="form-group">
-                             <label><i class="fas fa-briefcase"></i> OB/OT *</label>
-                             <select name="ob_ot" required>
-                                 <option value="">Select OB/OT</option>
-                                 <option value="Official Business">Official Business</option>
-                                 <option value="Official Time">Official Time</option>
-                             </select>
-                         </div>
-                     </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label><i class="fas fa-heading"></i> Title of Activity *</label>
-                            <input type="text" name="title_of_activity" required>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-calendar-alt"></i> Date From *</label>
-                            <input type="date" name="date_from" required>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-calendar-alt"></i> Date To *</label>
-                            <input type="date" name="date_to" required>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-map-marker-alt"></i> Venue *</label>
-                            <select name="venue" required>
-                                <option value="Online">Online</option>
-                                <option value="Auditorium">Auditorium</option>
-                                <option value="Executive Lounge">Executive Lounge</option>
-                                <option value="Local">Local</option>
-                                <option value="International">International</option>
-                            </select>
-                        </div>
+            <!-- Add Training Button - Color #1B3C53 like user_management -->
+            <button class="btn-open-modal" onclick="openModal()">
+                <i class="fas fa-plus-circle"></i> Add Training
+            </button>
+            
+            <!-- Modal -->
+            <div id="trainingModal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-plus-circle"></i> Add New Training</h2>
+                        <span class="close-modal" onclick="closeModal()">&times;</span>
                     </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label><i class="fas fa-file-alt"></i> Hospital Order</label>
-                            <input type="text" name="hospital_order">
-                        </div>
-                    </div>
-                    
-                    <div id="external_fields" class="external-fields">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label><i class="fas fa-calendar-day"></i> Date Filed</label>
-                                <input type="date" name="date_filed">
+                    <div class="modal-body">
+                        <form method="post" enctype="multipart/form-data" id="trainingForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label><i class="fas fa-building"></i> Division *</label>
+                                    <select name="division" required>
+                                        <option value="">Select Division</option>
+                                        <option value="nursing service">nursing service</option>
+                                        <option value="medical service">medical service</option>
+                                        <option value="HOPSS (HOSPITAL OPERATIONS AND PATIENT SUPPORT SERVICE)">HOPSS (HOSPITAL OPERATIONS AND PATIENT SUPPORT SERVICE)</option>
+                                        <option value="ALLIED HEALTH PROFESSIONAL SERVICE">ALLIED HEALTH PROFESSIONAL SERVICE</option>
+                                        <option value="FINANCES">FINANCES</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label><i class="fas fa-building"></i> Department/Section/Unit *</label>
+                                    <select name="department_section" id="department_section" required>
+                                        <option value="">Select Department/Section/Unit</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label><i class="fas fa-user"></i> Employee *</label>
+                                    <select name="user_id" required>
+                                        <option value="">Select Employee</option>
+                                        <?php foreach ($users as $user): ?>
+                                            <option value="<?= $user['id'] ?>"><?= htmlspecialchars($user['full_name'] ?: $user['username']) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label><i class="fas fa-hourglass-end"></i> PTR Deadline</label>
-                                <input type="date" name="ptr_deadline">
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label><i class="fas fa-tag"></i> Training Type *</label>
+                                    <select name="training_type" id="training_type" required>
+                                        <option value="Internal">Internal</option>
+                                        <option value="External">External</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label><i class="fas fa-briefcase"></i> OB/OT *</label>
+                                    <select name="ob_ot" required>
+                                        <option value="">Select OB/OT</option>
+                                        <option value="Official Business">Official Business</option>
+                                        <option value="Official Time">Official Time</option>
+                                    </select>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label><i class="fas fa-file-upload"></i> PTR File</label>
-                                <input type="file" name="ptr_file">
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label><i class="fas fa-heading"></i> Title of Activity *</label>
+                                    <input type="text" name="title_of_activity" required>
+                                </div>
+                                <div class="form-group">
+                                    <label><i class="fas fa-calendar-alt"></i> Date From *</label>
+                                    <input type="date" name="date_from" required>
+                                </div>
+                                <div class="form-group">
+                                    <label><i class="fas fa-calendar-alt"></i> Date To *</label>
+                                    <input type="date" name="date_to" required>
+                                </div>
+                                <div class="form-group">
+                                    <label><i class="fas fa-map-marker-alt"></i> Venue *</label>
+                                    <select name="venue" required>
+                                        <option value="Online">Online</option>
+                                        <option value="Auditorium">Auditorium</option>
+                                        <option value="Executive Lounge">Executive Lounge</option>
+                                        <option value="Local">Local</option>
+                                        <option value="International">International</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label><i class="fas fa-file-alt"></i> Hospital Order</label>
+                                    <input type="text" name="hospital_order">
+                                </div>
                             </div>
-                        </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label><i class="fas fa-comment"></i> Remarks</label>
+                                    <textarea name="remarks" rows="2"></textarea>
+                                </div>
+                            </div>
+                            
+                            <button type="submit" name="add_training" class="btn-submit"><i class="fas fa-save"></i> Add Training</button>
+                        </form>
                     </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label><i class="fas fa-comment"></i> Remarks</label>
-                            <textarea name="remarks" rows="2"></textarea>
-                        </div>
-                    </div>
-                    
-                    <button type="submit" name="add_training" class="btn-submit"><i class="fas fa-save"></i> Add Training</button>
-                </form>
+                </div>
             </div>
             
             <div class="search-bar">
@@ -234,7 +386,7 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
             </div>
             
             <div class="data-table">
-                 <table>
+                <table>
                     <thead>
                          <tr>
                             <th>ID</th>
@@ -290,16 +442,23 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
     </div>
     
     <script>
-        function toggleExternalFields() {
-            var type = document.getElementById('training_type').value;
-            var externalFields = document.getElementById('external_fields');
-            if (type === 'External') {
-                externalFields.style.display = 'block';
-            } else {
-                externalFields.style.display = 'none';
+        function openModal() {
+            document.getElementById('trainingModal').style.display = 'block';
+            document.body.style.overflow = 'hidden';
+        }
+        
+        function closeModal() {
+            document.getElementById('trainingModal').style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+        
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            var modal = document.getElementById('trainingModal');
+            if (event.target == modal) {
+                closeModal();
             }
         }
-        toggleExternalFields();
     </script>
 </body>
 </html>

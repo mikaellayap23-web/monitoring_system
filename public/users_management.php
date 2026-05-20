@@ -150,15 +150,189 @@ if (isset($_GET['edit'])) {
             padding: 10px;
             border-radius: 5px;
             margin-bottom: 20px;
-            border-left: 4px solid #3498db;
+            border-left: 4px solid #1B3C53;
         }
         .info-box i {
-            color: #3498db;
+            color: #1B3C53;
             margin-right: 10px;
         }
         .readonly-field {
             background-color: #f5f5f5;
             cursor: not-allowed;
+        }
+        
+        /* Modal Styles */
+        .btn-open-modal {
+            background: #1B3C53;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            transition: background 0.3s;
+        }
+        
+        .btn-open-modal:hover {
+            background: #0f2a3a;
+        }
+        
+        .btn-open-modal i {
+            margin-right: 8px;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+            animation: fadeIn 0.3s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .modal-content {
+            background-color: #fff;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            animation: slideDown 0.3s;
+            overflow: visible;
+        }
+        
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .modal-header {
+            padding: 15px 20px;
+            background: #1B3C53;
+            color: white;
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.2rem;
+        }
+        
+        .close-modal {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        
+        .close-modal:hover {
+            color: #ddd;
+            transform: scale(1.1);
+        }
+        
+        .modal-body {
+            padding: 25px;
+            overflow: visible;
+        }
+        
+        .modal-body .btn-submit {
+            background: #1B3C53;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+            width: auto;
+            display: inline-block;
+        }
+        
+        .modal-body .btn-submit:hover {
+            background: #0f2a3a;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .form-group label i {
+            margin-right: 8px;
+            color: #1B3C53;
+        }
+        
+        .form-group input,
+        .form-group select {
+            padding: 12px 14px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #1B3C53;
+            box-shadow: 0 0 0 2px rgba(27, 60, 83, 0.1);
+        }
+        
+        .readonly-display {
+            background-color: #f5f5f5;
+            padding: 12px 14px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        small {
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .button-container {
+            text-align: left;
+            margin-top: 10px;
         }
     </style>
 </head>
@@ -183,64 +357,71 @@ if (isset($_GET['edit'])) {
                 <div class="alert-error"><i class="fas fa-exclamation-triangle"></i> <?= $error_msg ?></div>
             <?php endif; ?>
             
-            <div class="section-card">
-                <h3><i class="fas <?= $edit_user ? 'fa-user-edit' : 'fa-user-plus' ?>"></i> <?= $edit_user ? 'Edit User' : 'Add New User' ?></h3>
-                <form method="post">
-                    <?php if ($edit_user): ?>
-                        <input type="hidden" name="user_id" value="<?= $edit_user['id'] ?>">
-                    <?php endif; ?>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label><i class="fas fa-id-card"></i> Full Name *</label>
-                            <input type="text" name="full_name" value="<?= $edit_user['full_name'] ?? '' ?>" required>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-envelope"></i> Email *</label>
-                            <input type="email" name="email" value="<?= $edit_user['email'] ?? '' ?>" <?= $edit_user ? 'readonly' : 'required' ?>>
-                            <?php if (!$edit_user): ?>
-                                <small style="font-size: 11px; color: #666;">Username will be auto-generated from email</small>
-                            <?php endif; ?>
-                        </div>
+            <!-- Add User Button -->
+            <button class="btn-open-modal" onclick="openModal()">
+                <i class="fas fa-user-plus"></i> Add New User
+            </button>
+            
+            <!-- Modal -->
+            <div id="userModal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-user-plus"></i> Add New User</h2>
+                        <span class="close-modal" onclick="closeModal()">&times;</span>
                     </div>
-                    
-                    <?php if (!$edit_user): ?>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label><i class="fas fa-lock"></i> Password *</label>
-                                <input type="password" name="password" required>
+                    <div class="modal-body">
+                        <form method="post" id="userForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label><i class="fas fa-id-card"></i> Full Name *</label>
+                                    <input type="text" name="full_name" required>
+                                </div>
                             </div>
-                        </div>
-                    <?php endif; ?>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label><i class="fas fa-building"></i> Division *</label>
-                            <input type="text" class="readonly-field" value="<?= htmlspecialchars($current_user['division']) ?>" readonly disabled style="background:#f5f5f5; padding:10px; border:1px solid #ddd; border-radius:5px; width:100%">
-                        </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label><i class="fas fa-envelope"></i> Email *</label>
+                                    <input type="email" name="email" required>
+                                    <small>Username will be auto-generated from email</small>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label><i class="fas fa-lock"></i> Password *</label>
+                                    <input type="password" name="password" required>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label><i class="fas fa-building"></i> Division *</label>
+                                    <div class="readonly-display"><?= htmlspecialchars($current_user['division']) ?></div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label><i class="fas fa-sitemap"></i> Department/Section/Unit *</label>
+                                    <div class="readonly-display"><?= htmlspecialchars($current_user['department']) ?> / <?= htmlspecialchars($current_user['section']) ?> / <?= htmlspecialchars($current_user['unit']) ?></div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label><i class="fas fa-info-circle"></i> Role</label>
+                                    <div class="readonly-display">Employee (Auto-assigned)</div>
+                                </div>
+                            </div>
+                            
+                            <div class="button-container">
+                                <button type="submit" name="add_user" class="btn-submit">
+                                    <i class="fas fa-user-plus"></i> Add User
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label><i class="fas fa-sitemap"></i> Department/Section/Unit *</label>
-                            <input type="text" class="readonly-field" value="<?= htmlspecialchars($current_user['department']) ?> / <?= htmlspecialchars($current_user['section']) ?> / <?= htmlspecialchars($current_user['unit']) ?>" readonly disabled style="background:#f5f5f5; padding:10px; border:1px solid #ddd; border-radius:5px; width:100%">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label><i class="fas fa-info-circle"></i> Role</label>
-                            <input type="text" class="readonly-field" value="Employee (Auto-assigned)" readonly disabled style="background:#f5f5f5; padding:10px; border:1px solid #ddd; border-radius:5px; width:100%">
-                        </div>
-                    </div>
-                    
-                    <button type="submit" name="<?= $edit_user ? 'edit_user' : 'add_user' ?>" class="btn-submit">
-                        <i class="fas <?= $edit_user ? 'fa-save' : 'fa-user-plus' ?>"></i> <?= $edit_user ? 'Update User' : 'Add User' ?>
-                    </button>
-                    <?php if ($edit_user): ?>
-                        <a href="users_management.php" class="btn-submit" style="background: #666; text-decoration: none;"><i class="fas fa-times"></i> Cancel</a>
-                    <?php endif; ?>
-                </form>
+                </div>
             </div>
             
             <div class="data-table">
@@ -270,7 +451,7 @@ if (isset($_GET['edit'])) {
                                 <td><?= htmlspecialchars($user['full_name'] ?? '') ?></td>
                                 <td><?= htmlspecialchars($user['email']) ?></td>
                                 <td>
-                                    <span style="background: #3498db; color: white; padding: 3px 8px; border-radius: 3px; font-size: 12px;">
+                                    <span style="background: #1B3C53; color: white; padding: 3px 8px; border-radius: 3px; font-size: 12px;">
                                         <?= $user['role'] ?>
                                     </span>
                                 </td>
@@ -290,5 +471,25 @@ if (isset($_GET['edit'])) {
             </div>
         </div>
     </div>
+    
+    <script>
+        function openModal() {
+            document.getElementById('userModal').style.display = 'block';
+            document.body.style.overflow = 'hidden';
+        }
+        
+        function closeModal() {
+            document.getElementById('userModal').style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+        
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            var modal = document.getElementById('userModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+    </script>
 </body>
 </html>
