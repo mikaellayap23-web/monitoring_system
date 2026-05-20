@@ -19,7 +19,6 @@ $error_msg = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
     $user_id = $_POST['user_id'];
-    $employee_name = $_POST['employee_name'];
     $training_type = $_POST['training_type'];
     $division = $_POST['division'];
     
@@ -57,9 +56,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
         }
     }
     
-    $stmt = $pdo->prepare("INSERT INTO trainings (user_id, employee_name, training_type, division, department, section, unit, title_of_activity, date_from, date_to, venue, hospital_order, date_filed, ob_ot, ptr_deadline, ptr_file, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt = $pdo->prepare("INSERT INTO trainings (user_id, training_type, division, department, section, unit, title_of_activity, date_from, date_to, venue, hospital_order, date_filed, ob_ot, ptr_deadline, ptr_file, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     
-    if ($stmt->execute([$user_id, $employee_name, $training_type, $division, $department, $section, $unit, $title_of_activity, $date_from, $date_to, $venue, $hospital_order, $date_filed, $ob_ot, $ptr_deadline, $ptr_file, $remarks])) {
+    if ($stmt->execute([$user_id, $training_type, $division, $department, $section, $unit, $title_of_activity, $date_from, $date_to, $venue, $hospital_order, $date_filed, $ob_ot, $ptr_deadline, $ptr_file, $remarks])) {
         $success_msg = 'Training added successfully!';
     } else {
         $error_msg = 'Failed to add training.';
@@ -117,6 +116,25 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                 <h3><i class="fas fa-plus-circle"></i> Add New Training</h3>
                 <form method="post" enctype="multipart/form-data">
                     <div class="form-row">
+
+                    <div class="form-group">
+                             <label><i class="fas fa-building"></i> Division *</label>
+                             <select name="division" required>
+                                 <option value="">Select Division</option>
+                                 <option value="nursing service">nursing service</option>
+                                 <option value="medical service">medical service</option>
+                                 <option value="HOPSS (HOSPITAL OPERATIONS AND PATIENT SUPPORT SERVICE)">HOPSS (HOSPITAL OPERATIONS AND PATIENT SUPPORT SERVICE)</option>
+                                 <option value="ALLIED HEALTH PROFESSIONAL SERVICE">ALLIED HEALTH PROFESSIONAL SERVICE</option>
+                                 <option value="FINANCES">FINANCES</option>
+                             </select>
+                         </div>
+                         <div class="form-group">
+                             <label><i class="fas fa-building"></i> Department/Section/Unit *</label>
+                             <select name="department_section" id="department_section" required>
+                                 <option value="">Select Department/Section/Unit</option>
+                                 <!-- Options will be added dynamically or you can add them here -->
+                             </select>
+                         </div>
                         <div class="form-group">
                             <label><i class="fas fa-user"></i> Employee *</label>
                             <select name="user_id" required>
@@ -127,43 +145,23 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                             </select>
                         </div>
                         <div class="form-group">
-                            <label><i class="fas fa-user-tag"></i> Employee Name *</label>
-                            <input type="text" name="employee_name" required>
-                        </div>
-                        <div class="form-group">
                             <label><i class="fas fa-tag"></i> Training Type *</label>
                             <select name="training_type" id="training_type" required onchange="toggleExternalFields()">
                                 <option value="Internal">Internal</option>
                                 <option value="External">External</option>
                             </select>
                         </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label><i class="fas fa-building"></i> Division *</label>
-                            <input type="text" name="division" required>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-building"></i> Department/Section *</label>
-                            <select name="department_section" id="department_section" required>
-                                <option value="">Select Department/Section</option>
-                                <!-- Options will be added dynamically or you can add them here -->
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-briefcase"></i> OB/OT *</label>
-                            <select name="ob_ot" required>
-                                <option value="">Select OB/OT</option>
-                                <option value="Official Business">Official Business</option>
-                                <option value="Official Time">Official Time</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-users"></i> Unit</label>
-                            <input type="text" name="unit">
-                        </div>
-                    </div>
+                    </div>                    
+        <div class="form-row">
+                         <div class="form-group">
+                             <label><i class="fas fa-briefcase"></i> OB/OT *</label>
+                             <select name="ob_ot" required>
+                                 <option value="">Select OB/OT</option>
+                                 <option value="Official Business">Official Business</option>
+                                 <option value="Official Time">Official Time</option>
+                             </select>
+                         </div>
+                     </div>
                     
                     <div class="form-row">
                         <div class="form-group">

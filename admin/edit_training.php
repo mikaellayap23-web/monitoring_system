@@ -126,30 +126,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_training'])) {
                         </div>
                     </div>
                     
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label><i class="fas fa-building"></i> Division *</label>
-                            <input type="text" name="division" value="<?= htmlspecialchars($training['division']) ?>" required>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-building"></i> Department/Section *</label>
-                            <select name="department_section" id="department_section" required>
-                                <option value="<?= htmlspecialchars($training['department'] . '||' . $training['section']) ?>"><?= htmlspecialchars($training['department'] . ' / ' . $training['section']) ?></option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-briefcase"></i> OB/OT *</label>
-                            <select name="ob_ot" required>
-                                <option value="">Select OB/OT</option>
-                                <option value="Official Business" <?= $training['ob_ot'] === 'Official Business' ? 'selected' : '' ?>>Official Business</option>
-                                <option value="Official Time" <?= $training['ob_ot'] === 'Official Time' ? 'selected' : '' ?>>Official Time</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-users"></i> Unit</label>
-                            <input type="text" name="unit" value="<?= htmlspecialchars($training['unit']) ?>">
-                        </div>
-                    </div>
+<div class="form-row">
+                         <div class="form-group">
+                             <label><i class="fas fa-building"></i> Division *</label>
+                             <select name="division" required>
+                                 <option value="">Select Division</option>
+                                 <option value="nursing service" <?= $training['division'] === 'nursing service' ? 'selected' : '' ?>>nursing service</option>
+                                 <option value="medical service" <?= $training['division'] === 'medical service' ? 'selected' : '' ?>>medical service</option>
+                                 <option value="HOPSS (HOSPITAL OPERATIONS AND PATIENT SUPPORT SERVICE)" <?= $training['division'] === 'HOPSS (HOSPITAL OPERATIONS AND PATIENT SUPPORT SERVICE)' ? 'selected' : '' ?>>HOPSS (HOSPITAL OPERATIONS AND PATIENT SUPPORT SERVICE)</option>
+                                 <option value="ALLIED HEALTH PROFESSIONAL SERVICE" <?= $training['division'] === 'ALLIED HEALTH PROFESSIONAL SERVICE' ? 'selected' : '' ?>>ALLIED HEALTH PROFESSIONAL SERVICE</option>
+                                 <option value="FINANCES" <?= $training['division'] === 'FINANCES' ? 'selected' : '' ?>>FINANCES</option>
+                             </select>
+                         </div>
+                         <div class="form-group">
+                             <label><i class="fas fa-building"></i> Department/Section *</label>
+                             <select name="department_section" id="department_section" required>
+                                 <option value="<?= htmlspecialchars($training['department'] . '||' . $training['section']) ?>"><?= htmlspecialchars($training['department'] . ' / ' . $training['section']) ?></option>
+                             </select>
+                         </div>
+                         <div class="form-group">
+                             <label><i class="fas fa-briefcase"></i> OB/OT *</label>
+                             <select name="ob_ot" required>
+                                 <option value="">Select OB/OT</option>
+                                 <option value="Official Business" <?= $training['ob_ot'] === 'Official Business' ? 'selected' : '' ?>>Official Business</option>
+                                 <option value="Official Time" <?= $training['ob_ot'] === 'Official Time' ? 'selected' : '' ?>>Official Time</option>
+                             </select>
+                         </div>
+                         <div class="form-group">
+                             <label><i class="fas fa-users"></i> Unit</label>
+                             <input type="text" name="unit" value="<?= htmlspecialchars($training['unit']) ?>">
+                         </div>
+                     </div>
                     
                     <div class="form-row">
                         <div class="form-group">

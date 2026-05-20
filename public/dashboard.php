@@ -12,9 +12,10 @@ $role = $_SESSION['role'];
 
 // For admin: get filter values
 $filter_division = $_GET['division'] ?? '';
-$filter_department = $_GET['department'] ?? '';
-$filter_section = $_GET['section'] ?? '';
-$filter_unit = $_GET['unit'] ?? '';
+$filter_dept_section_unit = $_GET['dept_section_unit'] ?? '';
+$filter_employee = $_GET['employee'] ?? '';
+$filter_date_from = $_GET['date_from'] ?? '';
+$filter_date_to = $_GET['date_to'] ?? '';
 
 $where_clauses = [];
 $params = [];
@@ -25,17 +26,34 @@ if ($role !== 'employee') {
         $where_clauses[] = "division = ?";
         $params[] = $filter_division;
     }
-    if (!empty($filter_department)) {
-        $where_clauses[] = "department = ?";
-        $params[] = $filter_department;
+    if (!empty($filter_dept_section_unit)) {
+        // Split the combined department/section/unit value
+        $parts = explode(' / ', $filter_dept_section_unit);
+        $filter_department = $parts[0] ?? null;
+        $filter_section = $parts[1] ?? null;
+        $filter_unit = $parts[2] ?? null;
+        
+        if (!empty($filter_department)) {
+            $where_clauses[] = "department = ?";
+            $params[] = $filter_department;
+        }
+        if (!empty($filter_section)) {
+            $where_clauses[] = "section = ?";
+            $params[] = $filter_section;
+        }
+        if (!empty($filter_unit)) {
+            $where_clauses[] = "unit = ?";
+            $params[] = $filter_unit;
+        }
     }
-    if (!empty($filter_section)) {
-        $where_clauses[] = "section = ?";
-        $params[] = $filter_section;
+    if (!empty($filter_employee)) {
+        $where_clauses[] = "employee_name LIKE ?";
+        $params[] = "%$filter_employee%";
     }
-    if (!empty($filter_unit)) {
-        $where_clauses[] = "unit = ?";
-        $params[] = $filter_unit;
+    if (!empty($filter_date_from) && !empty($filter_date_to)) {
+        $where_clauses[] = "(date_from >= ? AND date_to <= ?)";
+        $params[] = $filter_date_from;
+        $params[] = $filter_date_to;
     }
 } else {
     // Employee: only show their own data
@@ -47,15 +65,23 @@ $where_sql = !empty($where_clauses) ? "WHERE " . implode(" AND ", $where_clauses
 
 // For admin: get filter dropdown options
 $divisions = [];
-$departments = [];
-$sections = [];
-$units = [];
+$deptSectionUnitOptions = [];
+$employees = [];
 
 if ($role !== 'employee') {
     $divisions = $pdo->query("SELECT DISTINCT division FROM users WHERE division IS NOT NULL AND division != '' ORDER BY division")->fetchAll();
-    $departments = $pdo->query("SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department != '' ORDER BY department")->fetchAll();
-    $sections = $pdo->query("SELECT DISTINCT section FROM users WHERE section IS NOT NULL AND section != '' ORDER BY section")->fetchAll();
-    $units = $pdo->query("SELECT DISTINCT unit FROM users WHERE unit IS NOT NULL AND unit != '' ORDER BY unit")->fetchAll();
+    
+    // Get combined department/section/unit options
+    $deptSectionUnit = $pdo->query("SELECT DISTINCT department, section, unit FROM users WHERE department IS NOT NULL AND section IS NOT NULL AND unit IS NOT NULL ORDER BY department, section, unit")->fetchAll();
+    foreach ($deptSectionUnit as $option) {
+        $combined = htmlspecialchars($option['department']) . ' / ' . 
+                   htmlspecialchars($option['section']) . ' / ' . 
+                   htmlspecialchars($option['unit']);
+        $deptSectionUnitOptions[] = ['value' => $combined];
+    }
+    
+    // Get employee names for filter
+    $employees = $pdo->query("SELECT DISTINCT employee_name FROM trainings WHERE employee_name IS NOT NULL AND employee_name != '' ORDER BY employee_name")->fetchAll();
 }
 
 $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM trainings $where_sql");
@@ -348,19 +374,24 @@ if ($role !== 'employee') {
             
             <div class="dashboard-widgets">
                 <div class="widget">
-                    <i class="fas fa-graduation-cap"></i>
-                    <h3>TOTAL TRAININGS</h3>
-                    <p><?= $total_trainings ?></p>
+                    <i class="fas fa-users"></i>
+                    <h3>TOTAL STAFF</h3>
+                    <p><?= $total_employees ?></p>
                 </div>
                 <div class="widget">
-                    <i class="fas fa-calendar-alt"></i>
-                    <h3>INTERNAL TRAININGS</h3>
-                    <p><?= $internal_count ?></p>
+                    <i class="fas fa-user-check"></i>
+                    <h3>TRAINING ATTENDED</h3>
+                    <p><?= $total_trainings ?></p>
                 </div>
                 <div class="widget">
                     <i class="fas fa-globe"></i>
                     <h3>EXTERNAL TRAININGS</h3>
                     <p><?= $external_count ?></p>
+                </div>
+                <div class="widget">
+                    <i class="fas fa-calendar-alt"></i>
+                    <h3>INTERNAL TRAININGS</h3>
+                    <p><?= $internal_count ?></p>
                 </div>
                 <div class="widget">
                     <i class="fas fa-clock"></i>
@@ -387,38 +418,39 @@ if ($role !== 'employee') {
                         </select>
                     </div>
                     <div class="filter-group">
-                        <label><i class="fas fa-building"></i> Department</label>
-                        <select name="department">
-                            <option value="">All Departments</option>
-                            <?php foreach ($departments as $d): ?>
-                                <option value="<?= htmlspecialchars($d['department']) ?>" <?= $filter_department == $d['department'] ? 'selected' : '' ?>><?= htmlspecialchars($d['department']) ?></option>
+                        <label><i class="fas fa-sitemap"></i> Department/Section/Unit</label>
+                        <select name="dept_section_unit">
+                            <option value="">All Departments/Sections/Units</option>
+                            <?php foreach ($deptSectionUnitOptions as $opt): ?>
+                                <option value="<?= $opt['value'] ?>" <?= $filter_dept_section_unit == $opt['value'] ? 'selected' : '' ?>><?= $opt['value'] ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="filter-group">
-                        <label><i class="fas fa-layer-group"></i> Section</label>
-                        <select name="section">
-                            <option value="">All Sections</option>
-                            <?php foreach ($sections as $s): ?>
-                                <option value="<?= htmlspecialchars($s['section']) ?>" <?= $filter_section == $s['section'] ? 'selected' : '' ?>><?= htmlspecialchars($s['section']) ?></option>
+                        <label><i class="fas fa-user-tag"></i> Employee Name</label>
+                        <select name="employee">
+                            <option value="">All Employees</option>
+                            <?php foreach ($employees as $e): ?>
+                                <option value="<?= htmlspecialchars($e['employee_name']) ?>" <?= $filter_employee == $e['employee_name'] ? 'selected' : '' ?>><?= htmlspecialchars($e['employee_name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="filter-group">
-                        <label><i class="fas fa-users"></i> Unit</label>
-                        <select name="unit">
-                            <option value="">All Units</option>
-                            <?php foreach ($units as $u): ?>
-                                <option value="<?= htmlspecialchars($u['unit']) ?>" <?= $filter_unit == $u['unit'] ? 'selected' : '' ?>><?= htmlspecialchars($u['unit']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <label><i class="fas fa-calendar-alt"></i> Date Range</label>
+<div class="date-range-inputs">
+                             <input type="date" name="date_from" value="<?= htmlspecialchars($filter_date_from) ?>">
+                             <span>to</span>
+                             <input type="date" name="date_to" value="<?= htmlspecialchars($filter_date_to) ?>">
+                         </div>
                     </div>
                     <div class="filter-group">
                         <button type="submit"><i class="fas fa-filter"></i> Apply Filters</button>
                     </div>
+                    <?php if (!empty($filter_division) || !empty($filter_dept_section_unit) || !empty($filter_employee) || !empty($filter_date_from) || !empty($filter_date_to)): ?>
                     <div class="filter-group">
-                        <a href="dashboard.php" style="background:#666; color:white; padding:8px 20px; border-radius:6px; text-decoration:none; display:inline-block;"><i class="fas fa-times"></i> Clear</a>
+                        <a href="dashboard.php" class="clear-btn"><i class="fas fa-times"></i> Clear</a>
                     </div>
+                    <?php endif; ?>
                 </form>
             </div>
             
