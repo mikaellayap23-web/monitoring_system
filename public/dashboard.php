@@ -10,28 +10,54 @@ $user_id = $_SESSION['user_id'];
 $username = $_SESSION['username'];
 $role = $_SESSION['role'];
 
-// For admin: get filter values
-$filter_division = $_GET['division'] ?? '';
-$filter_dept_section_unit = $_GET['dept_section_unit'] ?? '';
-$filter_employee = $_GET['employee'] ?? '';
-$filter_date_from = $_GET['date_from'] ?? '';
-$filter_date_to = $_GET['date_to'] ?? '';
+$current_user = null;
+if ($role === 'unit_head') {
+    $stmt = $pdo->prepare("SELECT division, department, section, unit FROM users WHERE id = ?");
+    $stmt->execute([$user_id]);
+    $current_user = $stmt->fetch();
+}
 
 $where_clauses = [];
 $params = [];
 
-// Only apply filters for non-employees
-if ($role !== 'employee') {
+if ($role === 'employee') {
+    $where_clauses[] = "user_id = ?";
+    $params[] = $user_id;
+} elseif ($role === 'unit_head') {
+    if ($current_user) {
+        if (!empty($current_user['division'])) {
+            $where_clauses[] = "division = ?";
+            $params[] = $current_user['division'];
+        }
+        if (!empty($current_user['department'])) {
+            $where_clauses[] = "department = ?";
+            $params[] = $current_user['department'];
+        }
+        if (!empty($current_user['section'])) {
+            $where_clauses[] = "section = ?";
+            $params[] = $current_user['section'];
+        }
+        if (!empty($current_user['unit'])) {
+            $where_clauses[] = "unit = ?";
+            $params[] = $current_user['unit'];
+        }
+    }
+} else {
+    $filter_division = $_GET['division'] ?? '';
+    $filter_dept_section_unit = $_GET['dept_section_unit'] ?? '';
+    $filter_employee = $_GET['employee'] ?? '';
+    $filter_date_from = $_GET['date_from'] ?? '';
+    $filter_date_to = $_GET['date_to'] ?? '';
+    
     if (!empty($filter_division)) {
         $where_clauses[] = "division = ?";
         $params[] = $filter_division;
     }
     if (!empty($filter_dept_section_unit)) {
-        // Split the combined department/section/unit value
         $parts = explode(' / ', $filter_dept_section_unit);
-        $filter_department = $parts[0] ?? null;
-        $filter_section = $parts[1] ?? null;
-        $filter_unit = $parts[2] ?? null;
+        $filter_department = $parts[0] ?? '';
+        $filter_section = $parts[1] ?? '';
+        $filter_unit = $parts[2] ?? '';
         
         if (!empty($filter_department)) {
             $where_clauses[] = "department = ?";
@@ -55,40 +81,58 @@ if ($role !== 'employee') {
         $params[] = $filter_date_from;
         $params[] = $filter_date_to;
     }
-} else {
-    // Employee: only show their own data
-    $where_clauses[] = "user_id = ?";
-    $params[] = $user_id;
 }
 
 $where_sql = !empty($where_clauses) ? "WHERE " . implode(" AND ", $where_clauses) : "";
 
-// For admin: get filter dropdown options
 $divisions = [];
 $deptSectionUnitOptions = [];
 $employees = [];
 
-if ($role !== 'employee') {
-    $divisions = $pdo->query("SELECT DISTINCT division FROM users WHERE division IS NOT NULL AND division != '' ORDER BY division")->fetchAll();
+if ($role === 'admin') {
+    $divisions = $pdo->query("SELECT name FROM divisions ORDER BY name")->fetchAll();
     
-    // Get combined department/section/unit options
-    $deptSectionUnit = $pdo->query("SELECT DISTINCT department, section, unit FROM users WHERE department IS NOT NULL AND section IS NOT NULL AND unit IS NOT NULL ORDER BY department, section, unit")->fetchAll();
-    foreach ($deptSectionUnit as $option) {
-        $combined = htmlspecialchars($option['department']) . ' / ' . 
-                   htmlspecialchars($option['section']) . ' / ' . 
-                   htmlspecialchars($option['unit']);
-        $deptSectionUnitOptions[] = ['value' => $combined];
+    $allDepartments = $pdo->query("SELECT name FROM departments ORDER BY name")->fetchAll();
+    foreach ($allDepartments as $dept) {
+        $combined = $dept['name'] . ' / / ';
+        $deptSectionUnitOptions[] = $combined;
     }
     
-    // Get employee names for filter
-    $employees = $pdo->query("SELECT DISTINCT employee_name FROM trainings WHERE employee_name IS NOT NULL AND employee_name != '' ORDER BY employee_name")->fetchAll();
+    $employees = $pdo->query("SELECT DISTINCT full_name as employee_name FROM users WHERE role != 'admin' AND full_name IS NOT NULL ORDER BY full_name")->fetchAll();
+} elseif ($role === 'unit_head' && $current_user) {
+    if (!empty($current_user['division'])) {
+        $divisions = [[ 'name' => $current_user['division'] ]];
+    }
+    
+    $combined = ($current_user['department'] ?? '') . ' / ' . ($current_user['section'] ?? '') . ' / ' . ($current_user['unit'] ?? '');
+    if (trim($combined) !== ' / / ') {
+        $deptSectionUnitOptions = [$combined];
+    }
+    
+    $employeeStmt = $pdo->prepare("
+        SELECT DISTINCT u.full_name as employee_name 
+        FROM users u 
+        WHERE u.division = ? 
+        AND u.department = ? 
+        AND u.section = ? 
+        AND u.unit = ?
+        AND u.role = 'employee'
+        AND u.full_name IS NOT NULL 
+        ORDER BY u.full_name
+    ");
+    $employeeStmt->execute([
+        $current_user['division'], 
+        $current_user['department'], 
+        $current_user['section'], 
+        $current_user['unit']
+    ]);
+    $employees = $employeeStmt->fetchAll();
 }
 
 $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM trainings $where_sql");
 $stmt->execute($params);
 $total_trainings = $stmt->fetch()['total'];
 
-$internal_params = $params;
 $internal_sql = "SELECT COUNT(*) as total FROM trainings";
 if (!empty($where_clauses)) {
     $internal_sql .= " $where_sql AND training_type = 'Internal'";
@@ -96,10 +140,9 @@ if (!empty($where_clauses)) {
     $internal_sql .= " WHERE training_type = 'Internal'";
 }
 $stmt = $pdo->prepare($internal_sql);
-$stmt->execute($internal_params);
+$stmt->execute($params);
 $internal_count = $stmt->fetch()['total'];
 
-$external_params = $params;
 $external_sql = "SELECT COUNT(*) as total FROM trainings";
 if (!empty($where_clauses)) {
     $external_sql .= " $where_sql AND training_type = 'External'";
@@ -107,10 +150,9 @@ if (!empty($where_clauses)) {
     $external_sql .= " WHERE training_type = 'External'";
 }
 $stmt = $pdo->prepare($external_sql);
-$stmt->execute($external_params);
+$stmt->execute($params);
 $external_count = $stmt->fetch()['total'];
 
-$ob_ot_params = $params;
 $ob_ot_sql = "SELECT COUNT(*) as total FROM trainings";
 if (!empty($where_clauses)) {
     $ob_ot_sql .= " $where_sql AND ob_ot IS NOT NULL AND ob_ot != ''";
@@ -118,10 +160,9 @@ if (!empty($where_clauses)) {
     $ob_ot_sql .= " WHERE ob_ot IS NOT NULL AND ob_ot != ''";
 }
 $stmt = $pdo->prepare($ob_ot_sql);
-$stmt->execute($ob_ot_params);
+$stmt->execute($params);
 $ob_ot_count = $stmt->fetch()['total'];
 
-$ptr_params = $params;
 $ptr_sql = "SELECT COUNT(*) as total, SUM(ptr_submitted) as submitted FROM trainings";
 if (!empty($where_clauses)) {
     $ptr_sql .= " $where_sql AND training_type = 'External'";
@@ -129,14 +170,16 @@ if (!empty($where_clauses)) {
     $ptr_sql .= " WHERE training_type = 'External'";
 }
 $stmt = $pdo->prepare($ptr_sql);
-$stmt->execute($ptr_params);
+$stmt->execute($params);
 $ptr_data = $stmt->fetch();
 $ptr_total = $ptr_data['total'] ?? 0;
 $ptr_submitted = $ptr_data['submitted'] ?? 0;
 $ptr_percentage = $ptr_total > 0 ? round(($ptr_submitted / $ptr_total) * 100) : 0;
 
-// Only calculate these for admin view (for charts and table)
-$total_employees = 0;
+$stmt = $pdo->prepare("SELECT COUNT(*) as total FROM users WHERE role != 'admin'");
+$stmt->execute();
+$total_employees = $stmt->fetch()['total'];
+
 $attended_employees = 0;
 $not_attended = 0;
 $attended_percentage = 0;
@@ -146,16 +189,12 @@ $bar_not_attended = [];
 $training_data = [];
 
 if ($role !== 'employee') {
-    $stmt = $pdo->prepare("SELECT COUNT(*) as total_employees FROM users WHERE role != 'admin'");
-    $stmt->execute();
-    $total_employees = $stmt->fetch()['total_employees'];
-
     $stmt = $pdo->prepare("SELECT COUNT(DISTINCT user_id) as attended FROM trainings $where_sql");
     $stmt->execute($params);
     $attended_employees = $stmt->fetch()['attended'];
     $not_attended = $total_employees - $attended_employees;
     $attended_percentage = $total_employees > 0 ? round(($attended_employees / $total_employees) * 100) : 0;
-
+    
     $bar_sql = "SELECT 
         COALESCE(u.department, 'Unassigned') as name,
         COUNT(DISTINCT u.id) as total_employees,
@@ -163,34 +202,30 @@ if ($role !== 'employee') {
         FROM users u
         LEFT JOIN trainings t ON u.id = t.user_id
         WHERE u.role != 'admin'";
-    $bar_params = [];
-    if (!empty($filter_division)) {
-        $bar_sql .= " AND u.division = ?";
-        $bar_params[] = $filter_division;
-    }
-    if (!empty($filter_department)) {
-        $bar_sql .= " AND u.department = ?";
-        $bar_params[] = $filter_department;
-    }
-    if (!empty($filter_section)) {
-        $bar_sql .= " AND u.section = ?";
-        $bar_params[] = $filter_section;
-    }
-    if (!empty($filter_unit)) {
-        $bar_sql .= " AND u.unit = ?";
-        $bar_params[] = $filter_unit;
+    
+    if ($role === 'unit_head' && $current_user) {
+        if (!empty($current_user['division'])) {
+            $bar_sql .= " AND u.division = '" . addslashes($current_user['division']) . "'";
+        }
+        if (!empty($current_user['department'])) {
+            $bar_sql .= " AND u.department = '" . addslashes($current_user['department']) . "'";
+        }
+        if (!empty($current_user['section'])) {
+            $bar_sql .= " AND u.section = '" . addslashes($current_user['section']) . "'";
+        }
+        if (!empty($current_user['unit'])) {
+            $bar_sql .= " AND u.unit = '" . addslashes($current_user['unit']) . "'";
+        }
     }
     $bar_sql .= " GROUP BY COALESCE(u.department, 'Unassigned') ORDER BY name";
-    $stmt = $pdo->prepare($bar_sql);
-    $stmt->execute($bar_params);
-    $bar_data = $stmt->fetchAll();
-
+    $bar_data = $pdo->query($bar_sql)->fetchAll();
+    
     foreach ($bar_data as $row) {
         $bar_labels[] = $row['name'];
         $bar_attended[] = $row['attended'];
         $bar_not_attended[] = $row['total_employees'] - $row['attended'];
     }
-
+    
     $table_sql = "SELECT 
         t.employee_name,
         t.training_type,
@@ -247,7 +282,7 @@ if ($role !== 'employee') {
             color: #1B3C53;
             font-size: 12px;
         }
-        .filter-group select {
+        .filter-group select, .filter-group input {
             width: 100%;
             padding: 8px 12px;
             border: 1px solid #ddd;
@@ -261,9 +296,21 @@ if ($role !== 'employee') {
             border-radius: 6px;
             cursor: pointer;
         }
-        .filter-group button:hover {
-            background: #234C6A;
+        .filter-group button:hover { background: #234C6A; }
+        .clear-btn {
+            background: #666;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            display: inline-block;
         }
+        .date-range-inputs {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .date-range-inputs input { width: auto; flex: 1; }
         .charts-row {
             display: grid;
             grid-template-columns: 1fr 1.5fr;
@@ -276,14 +323,8 @@ if ($role !== 'employee') {
             border-radius: 12px;
             border: 1px solid rgba(210,193,182,0.3);
         }
-        .chart-container h3 {
-            margin-bottom: 15px;
-            color: #1B3C53;
-            font-size: 1rem;
-        }
-        canvas {
-            max-height: 300px;
-        }
+        .chart-container h3 { margin-bottom: 15px; color: #1B3C53; font-size: 1rem; }
+        canvas { max-height: 300px; }
         .data-table {
             background: white;
             border-radius: 12px;
@@ -291,68 +332,19 @@ if ($role !== 'employee') {
             overflow-x: auto;
             margin-top: 20px;
         }
-        .data-table table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        .data-table th {
-            background: #1B3C53;
-            color: white;
-            padding: 12px;
-            text-align: left;
-            font-size: 12px;
-        }
-        .data-table td {
-            padding: 10px 12px;
-            border-bottom: 1px solid #eee;
-            font-size: 12px;
-        }
-        .data-table tr:hover {
-            background: #f5f5f5;
-        }
-        .table-header {
-            padding: 15px 20px;
-            background: #f8fafc;
-            border-bottom: 1px solid rgba(210,193,182,0.3);
-            font-weight: 600;
-            color: #1B3C53;
-        }
-        .ptr-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 20px;
-            font-size: 10px;
-            font-weight: 600;
-        }
-        .ptr-submitted {
-            background: #d4edda;
-            color: #155724;
-        }
-        .ptr-pending {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        .ptr-na {
-            background: #e2e3e5;
-            color: #383d41;
-        }
-        .employee-welcome {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(210,193,182,0.3);
-            text-align: center;
-        }
-        .employee-welcome h2 {
-            color: #1B3C53;
-            margin-bottom: 10px;
-        }
-        @media (max-width: 768px) {
-            .charts-row {
-                grid-template-columns: 1fr;
-            }
-        }
+        .data-table table { width: 100%; border-collapse: collapse; }
+        .data-table th { background: #1B3C53; color: white; padding: 12px; text-align: left; font-size: 12px; }
+        .data-table td { padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 12px; }
+        .data-table tr:hover { background: #f5f5f5; }
+        .table-header { padding: 15px 20px; background: #f8fafc; border-bottom: 1px solid rgba(210,193,182,0.3); font-weight: 600; color: #1B3C53; }
+        .ptr-badge { display: inline-block; padding: 4px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+        .ptr-submitted { background: #d4edda; color: #155724; }
+        .ptr-pending { background: #f8d7da; color: #721c24; }
+        .ptr-na { background: #e2e3e5; color: #383d41; }
+        .employee-welcome { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(210,193,182,0.3); text-align: center; }
+        .employee-welcome h2 { color: #1B3C53; margin-bottom: 10px; }
+        .unit-info { background: #e8f4fd; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #1B3C53; }
+        @media (max-width: 768px) { .charts-row { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -365,10 +357,13 @@ if ($role !== 'employee') {
                 <div class="user-info"><i class="fas fa-user-shield"></i> <?= htmlspecialchars($username) ?> | <strong><?= ucfirst($role) ?></strong></div>
             </div>
             
-            <?php if ($role === 'employee'): ?>
-            <div class="employee-welcome">
-                <h2>Welcome, <?= htmlspecialchars($username) ?>!</h2>
-                <p>Here's your personal training summary.</p>
+            <?php if ($role === 'unit_head' && $current_user): ?>
+            <div class="unit-info">
+                <i class="fas fa-building"></i> 
+                Managing Unit: <strong><?= htmlspecialchars($current_user['division'] ?? '') ?></strong> / 
+                <strong><?= htmlspecialchars($current_user['department'] ?? '') ?></strong> / 
+                <strong><?= htmlspecialchars($current_user['section'] ?? '') ?></strong> / 
+                <strong><?= htmlspecialchars($current_user['unit'] ?? '') ?></strong>
             </div>
             <?php endif; ?>
             
@@ -379,19 +374,19 @@ if ($role !== 'employee') {
                     <p><?= $total_employees ?></p>
                 </div>
                 <div class="widget">
-                    <i class="fas fa-user-check"></i>
-                    <h3>TRAINING ATTENDED</h3>
+                    <i class="fas fa-graduation-cap"></i>
+                    <h3>TOTAL TRAININGS</h3>
                     <p><?= $total_trainings ?></p>
                 </div>
                 <div class="widget">
-                    <i class="fas fa-globe"></i>
-                    <h3>EXTERNAL TRAININGS</h3>
-                    <p><?= $external_count ?></p>
+                    <i class="fas fa-calendar-alt"></i>
+                    <h3>INTERNAL</h3>
+                    <p><?= $internal_count ?></p>
                 </div>
                 <div class="widget">
-                    <i class="fas fa-calendar-alt"></i>
-                    <h3>INTERNAL TRAININGS</h3>
-                    <p><?= $internal_count ?></p>
+                    <i class="fas fa-globe"></i>
+                    <h3>EXTERNAL</h3>
+                    <p><?= $external_count ?></p>
                 </div>
                 <div class="widget">
                     <i class="fas fa-clock"></i>
@@ -412,9 +407,13 @@ if ($role !== 'employee') {
                         <label><i class="fas fa-building"></i> Division</label>
                         <select name="division">
                             <option value="">All Divisions</option>
-                            <?php foreach ($divisions as $d): ?>
-                                <option value="<?= htmlspecialchars($d['division']) ?>" <?= $filter_division == $d['division'] ? 'selected' : '' ?>><?= htmlspecialchars($d['division']) ?></option>
-                            <?php endforeach; ?>
+                            <?php if ($role === 'admin'): ?>
+                                <?php foreach ($divisions as $d): ?>
+                                    <option value="<?= htmlspecialchars($d['name']) ?>" <?= ($_GET['division'] ?? '') == $d['name'] ? 'selected' : '' ?>><?= htmlspecialchars($d['name']) ?></option>
+                                <?php endforeach; ?>
+                            <?php elseif ($role === 'unit_head' && $current_user): ?>
+                                <option value="<?= htmlspecialchars($current_user['division']) ?>" selected><?= htmlspecialchars($current_user['division']) ?></option>
+                            <?php endif; ?>
                         </select>
                     </div>
                     <div class="filter-group">
@@ -422,7 +421,7 @@ if ($role !== 'employee') {
                         <select name="dept_section_unit">
                             <option value="">All Departments/Sections/Units</option>
                             <?php foreach ($deptSectionUnitOptions as $opt): ?>
-                                <option value="<?= $opt['value'] ?>" <?= $filter_dept_section_unit == $opt['value'] ? 'selected' : '' ?>><?= $opt['value'] ?></option>
+                                <option value="<?= htmlspecialchars($opt) ?>" <?= ($_GET['dept_section_unit'] ?? '') == $opt ? 'selected' : '' ?>><?= htmlspecialchars($opt) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -431,22 +430,22 @@ if ($role !== 'employee') {
                         <select name="employee">
                             <option value="">All Employees</option>
                             <?php foreach ($employees as $e): ?>
-                                <option value="<?= htmlspecialchars($e['employee_name']) ?>" <?= $filter_employee == $e['employee_name'] ? 'selected' : '' ?>><?= htmlspecialchars($e['employee_name']) ?></option>
+                                <option value="<?= htmlspecialchars($e['employee_name']) ?>" <?= ($_GET['employee'] ?? '') == $e['employee_name'] ? 'selected' : '' ?>><?= htmlspecialchars($e['employee_name']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="filter-group">
                         <label><i class="fas fa-calendar-alt"></i> Date Range</label>
-<div class="date-range-inputs">
-                             <input type="date" name="date_from" value="<?= htmlspecialchars($filter_date_from) ?>">
-                             <span>to</span>
-                             <input type="date" name="date_to" value="<?= htmlspecialchars($filter_date_to) ?>">
-                         </div>
+                        <div class="date-range-inputs">
+                            <input type="date" name="date_from" value="<?= htmlspecialchars($_GET['date_from'] ?? '') ?>">
+                            <span>to</span>
+                            <input type="date" name="date_to" value="<?= htmlspecialchars($_GET['date_to'] ?? '') ?>">
+                        </div>
                     </div>
                     <div class="filter-group">
                         <button type="submit"><i class="fas fa-filter"></i> Apply Filters</button>
                     </div>
-                    <?php if (!empty($filter_division) || !empty($filter_dept_section_unit) || !empty($filter_employee) || !empty($filter_date_from) || !empty($filter_date_to)): ?>
+                    <?php if (!empty($_GET)): ?>
                     <div class="filter-group">
                         <a href="dashboard.php" class="clear-btn"><i class="fas fa-times"></i> Clear</a>
                     </div>
@@ -477,9 +476,7 @@ if ($role !== 'employee') {
                     <thead>
                         <tr>
                             <th>Division</th>
-                            <th>Department</th>
-                            <th>Section</th>
-                            <th>Unit</th>
+                            <th>Department/Section/Unit</th>
                             <th>Employee Name</th>
                             <th>Type</th>
                             <th>Title of Activity</th>
@@ -493,9 +490,7 @@ if ($role !== 'employee') {
                             <?php foreach ($training_data as $row): ?>
                                 <tr>
                                     <td><?= htmlspecialchars($row['division'] ?? '-') ?></td>
-                                    <td><?= htmlspecialchars($row['department'] ?? '-') ?></td>
-                                    <td><?= htmlspecialchars($row['section'] ?? '-') ?></td>
-                                    <td><?= htmlspecialchars($row['unit'] ?? '-') ?></td>
+                                    <td><?= htmlspecialchars(($row['department'] ?? '') . ' / ' . ($row['section'] ?? '') . ' / ' . ($row['unit'] ?? '')) ?></td>
                                     <td><?= htmlspecialchars($row['employee_name']) ?></td>
                                     <td>
                                         <span style="padding:4px 8px; border-radius:12px; background:<?= $row['training_type'] == 'Internal' ? '#e3f2fd' : '#e8f5e9' ?>; font-size:11px;">
@@ -518,7 +513,7 @@ if ($role !== 'employee') {
                             <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="10" style="text-align:center; padding:40px;">
+                                <td colspan="8" style="text-align:center; padding:40px;">
                                     <i class="fas fa-inbox"></i> No training records found
                                 </td>
                             </tr>
@@ -540,14 +535,7 @@ if ($role !== 'employee') {
                             borderWidth: 1
                         }]
                     },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: {
-                                position: 'bottom'
-                            }
-                        }
-                    }
+                    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
                 });
                 
                 const barCtx = document.getElementById('barChart').getContext('2d');
@@ -556,46 +544,23 @@ if ($role !== 'employee') {
                     data: {
                         labels: <?= json_encode($bar_labels) ?>,
                         datasets: [
-                            {
-                                label: 'Attended Training',
-                                data: <?= json_encode($bar_attended) ?>,
-                                backgroundColor: '#234C6A',
-                                borderRadius: 4
-                            },
-                            {
-                                label: 'Not Attended',
-                                data: <?= json_encode($bar_not_attended) ?>,
-                                backgroundColor: '#D2C1B6',
-                                borderRadius: 4
-                            }
+                            { label: 'Attended Training', data: <?= json_encode($bar_attended) ?>, backgroundColor: '#234C6A', borderRadius: 4 },
+                            { label: 'Not Attended', data: <?= json_encode($bar_not_attended) ?>, backgroundColor: '#D2C1B6', borderRadius: 4 }
                         ]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: true,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                title: {
-                                    display: true,
-                                    text: 'Number of Employees'
-                                }
-                            },
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Department'
-                                }
-                            }
-                        },
-                        plugins: {
-                            legend: {
-                                position: 'top'
-                            }
-                        }
+                        scales: { y: { beginAtZero: true, title: { display: true, text: 'Number of Employees' } }, x: { title: { display: true, text: 'Department' } } },
+                        plugins: { legend: { position: 'top' } }
                     }
                 });
             </script>
+            <?php else: ?>
+            <div class="employee-welcome">
+                <h2>Welcome, <?= htmlspecialchars($username) ?>!</h2>
+                <p>Here is your personal training summary. Your unit head can see aggregated data from your unit.</p>
+            </div>
             <?php endif; ?>
         </div>
     </div>
