@@ -6,25 +6,20 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Check if user is Unit Head
 $user_id = $_SESSION['user_id'];
 $user_role = $_SESSION['role'] ?? '';
 
-// Get Unit Head's department, section, unit info
 $userStmt = $pdo->prepare("SELECT division, department, section, unit, full_name, username FROM users WHERE id = ?");
 $userStmt->execute([$user_id]);
 $current_user = $userStmt->fetch();
 
-// If not unit head, redirect
 if ($user_role !== 'unit_head') {
     header('Location: my_trainings.php');
     exit;
 }
 
-// Handle delete
 if (isset($_GET['delete'])) {
     $id = $_GET['delete'];
-    // Verify this training belongs to unit head's team
     $checkStmt = $pdo->prepare("
         SELECT t.* FROM trainings t 
         JOIN users u ON t.user_id = u.id 
@@ -45,20 +40,17 @@ if (isset($_GET['delete'])) {
 $success_msg = '';
 $error_msg = '';
 
-// Handle add training
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
     $user_id = $_POST['user_id'];
     $training_type = $_POST['training_type'];
     $division = $_POST['division'];
     
-    // Split the combined department/section/unit value
     $dept_section_unit = $_POST['dept_section_unit'];
     $parts = explode('/', $dept_section_unit);
     $department = $parts[0] ?? null;
     $section = $parts[1] ?? null;
     $unit = $parts[2] ?? null;
     
-    // Get employee name from selected user
     $userStmt = $pdo->prepare("SELECT full_name, username FROM users WHERE id = ?");
     $userStmt->execute([$user_id]);
     $selected_user = $userStmt->fetch();
@@ -71,7 +63,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
     $hospital_order = $_POST['hospital_order'];
     $remarks = $_POST['remarks'];
     
-    // External training fields
     $date_filed = null;
     $ob_ot = null;
     $ptr_deadline = null;
@@ -104,10 +95,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
     }
 }
 
-// Handle AJAX Edit Request
 if (isset($_GET['ajax_get_training'])) {
     $id = $_GET['ajax_get_training'];
-    // Verify this training belongs to unit head's team
     $stmt = $pdo->prepare("
         SELECT t.* FROM trainings t 
         JOIN users u ON t.user_id = u.id 
@@ -125,21 +114,18 @@ if (isset($_GET['ajax_get_training'])) {
     exit;
 }
 
-// Handle AJAX Edit Update Request
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_edit_training'])) {
     $id = $_POST['training_id'];
     $user_id = $_POST['user_id'];
     $training_type = $_POST['training_type'];
     $division = $_POST['division'];
     
-    // Split the combined department/section/unit value
     $dept_section_unit = $_POST['dept_section_unit'];
     $parts = explode('/', $dept_section_unit);
     $department = $parts[0] ?? null;
     $section = $parts[1] ?? null;
     $unit = $parts[2] ?? null;
     
-    // Get employee name from selected user
     $userStmt = $pdo->prepare("SELECT full_name, username FROM users WHERE id = ?");
     $userStmt->execute([$user_id]);
     $selected_user = $userStmt->fetch();
@@ -152,13 +138,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_edit_training'])
     $hospital_order = $_POST['hospital_order'];
     $remarks = $_POST['remarks'];
     
-    // External training fields
     $date_filed = null;
     $ob_ot = null;
     $ptr_deadline = null;
     $ptr_file = null;
     
-    // Get existing PTR file
     $stmt = $pdo->prepare("SELECT ptr_file FROM trainings WHERE id = ?");
     $stmt->execute([$id]);
     $existing = $stmt->fetch();
@@ -194,12 +178,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_edit_training'])
     exit;
 }
 
-// Handle PTR submission update
 if (isset($_POST['update_ptr'])) {
     $id = $_POST['training_id'];
     $submitted = isset($_POST['ptr_submitted']) ? 1 : 0;
     
-    // Verify permission
     $checkStmt = $pdo->prepare("
         SELECT t.* FROM trainings t 
         JOIN users u ON t.user_id = u.id 
@@ -215,7 +197,6 @@ if (isset($_POST['update_ptr'])) {
     }
 }
 
-// Get users under this Unit Head (same department, section, unit)
 $usersStmt = $pdo->prepare("
     SELECT id, username, full_name, department, section, unit 
     FROM users 
@@ -225,7 +206,6 @@ $usersStmt = $pdo->prepare("
 $usersStmt->execute([$current_user['department'], $current_user['section'], $current_user['unit']]);
 $team_members = $usersStmt->fetchAll();
 
-// Get trainings for unit head's team
 $search = $_GET['search'] ?? '';
 $query = "
     SELECT t.*, u.username, u.full_name as user_full_name 
@@ -246,7 +226,6 @@ $stmt = $pdo->prepare($query);
 $stmt->execute($params);
 $trainings = $stmt->fetchAll();
 
-// Get unique department/section/unit combinations for dropdown
 $deptSectionUnitStmt = $pdo->prepare("
     SELECT DISTINCT department, section, unit 
     FROM users 
@@ -256,7 +235,6 @@ $deptSectionUnitStmt = $pdo->prepare("
 $deptSectionUnitStmt->execute([$current_user['department'], $current_user['section'], $current_user['unit']]);
 $deptSectionUnitOptions = $deptSectionUnitStmt->fetchAll();
 
-// Get divisions for dropdown
 $divisionStmt = $pdo->query("SELECT DISTINCT division FROM users WHERE division IS NOT NULL ORDER BY division");
 $divisions = $divisionStmt->fetchAll();
 ?>
@@ -298,7 +276,6 @@ $divisions = $divisionStmt->fetchAll();
             text-decoration: none;
         }
         
-        /* Modal Styles */
         .btn-open-modal {
             background: #1B3C53;
             color: white;
@@ -454,7 +431,6 @@ $divisions = $divisionStmt->fetchAll();
             background: #5a6268;
         }
         
-        /* Form styling with reduced padding */
         .form-row {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -479,7 +455,6 @@ $divisions = $divisionStmt->fetchAll();
             color: #1B3C53;
         }
         
-        /* Reduced padding for all inputs, selects, textareas */
         .form-group input,
         .form-group select,
         .form-group textarea {
@@ -488,12 +463,6 @@ $divisions = $divisionStmt->fetchAll();
             border-radius: 5px;
             font-size: 13px;
             transition: border-color 0.3s;
-        }
-        
-        /* Specific reduced padding for Hospital Order */
-        .form-group input[name="hospital_order"],
-        .form-group #edit_hospital_order {
-            padding: 6px 10px;
         }
         
         .form-group input:focus,
@@ -559,9 +528,79 @@ $divisions = $divisionStmt->fetchAll();
             color: #1B3C53;
         }
         
-        /* Reduced gap in form rows */
-        .form-group textarea {
-            padding: 6px 10px;
+        .search-bar {
+            margin-bottom: 20px;
+        }
+        
+        .search-bar input {
+            padding: 8px;
+            width: 300px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+        
+        .data-table {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid rgba(210,193,182,0.3);
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        
+        .data-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .data-table th {
+            background: #1B3C53;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-size: 12px;
+        }
+        
+        .data-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+            font-size: 12px;
+        }
+        
+        .data-table tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+        
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+        
+        .btn-delete {
+            background: #dc2626;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 11px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: 5px;
+        }
+        
+        .btn-delete:hover {
+            background: #b91c1c;
         }
     </style>
 </head>
@@ -587,12 +626,10 @@ $divisions = $divisionStmt->fetchAll();
                 <div class="alert-error"><i class="fas fa-exclamation-triangle"></i> <?= $error_msg ?></div>
             <?php endif; ?>
             
-            <!-- Add Training Button -->
             <button class="btn-open-modal" onclick="openAddModal()">
                 <i class="fas fa-plus-circle"></i> Add Training
             </button>
             
-            <!-- Add Training Modal -->
             <div id="addModal" class="modal">
                 <div class="modal-content">
                     <div class="modal-header">
@@ -727,7 +764,6 @@ $divisions = $divisionStmt->fetchAll();
                 </div>
             </div>
             
-            <!-- Edit Training Modal -->
             <div id="editModal" class="modal">
                 <div class="modal-content">
                     <div class="modal-header">
@@ -921,7 +957,7 @@ $divisions = $divisionStmt->fetchAll();
                                 </td>
                                 <td><?= htmlspecialchars($training['title_of_activity']) ?></td>
                                 <td><?= htmlspecialchars($training['division']) ?></td>
-                                <td><?= htmlspecialchars($training['department'] . '/' . $training['section'] . '/' . $training['unit']) ?></td>
+                                <td><?= htmlspecialchars(($training['department'] ?? '') . '/' . ($training['section'] ?? '') . '/' . ($training['unit'] ?? '')) ?></td>
                                 <td><?= date('M d, Y', strtotime($training['date_from'])) ?> - <?= date('M d, Y', strtotime($training['date_to'])) ?></td>
                                 <td><?= $training['venue'] ?></td>
                                 <td><?= $training['ob_ot'] ?: '-' ?></td>
@@ -957,7 +993,6 @@ $divisions = $divisionStmt->fetchAll();
     </div>
     
     <script>
-        // Add Modal Functions
         function openAddModal() {
             document.getElementById('addModal').style.display = 'block';
             document.body.style.overflow = 'hidden';
@@ -986,7 +1021,6 @@ $divisions = $divisionStmt->fetchAll();
             }
         }
         
-        // Edit Modal Functions
         function openEditModal(id) {
             var modal = document.getElementById('editModal');
             var loading = document.getElementById('loadingSpinner');
@@ -1026,7 +1060,7 @@ $divisions = $divisionStmt->fetchAll();
             document.getElementById('edit_training_id').value = training.id;
             document.getElementById('edit_division').value = training.division;
             
-            var deptSectionUnit = training.department + '/' + training.section + '/' + training.unit;
+            var deptSectionUnit = (training.department || '') + '/' + (training.section || '') + '/' + (training.unit || '');
             document.getElementById('edit_dept_section_unit').value = deptSectionUnit;
             document.getElementById('edit_user_id').value = training.user_id;
             document.getElementById('edit_training_type').value = training.training_type;
@@ -1123,9 +1157,7 @@ $divisions = $divisionStmt->fetchAll();
             }
         }
         
-        // Set default values on page load
         document.addEventListener('DOMContentLoaded', function() {
-            // Auto-select division dropdown
             var divisionSelect = document.querySelector('#addModal select[name="division"]');
             if (divisionSelect) {
                 var currentDivision = '<?= htmlspecialchars($current_user['division']) ?>';
@@ -1137,7 +1169,6 @@ $divisions = $divisionStmt->fetchAll();
                 }
             }
             
-            // Auto-select department/section/unit dropdown
             var deptSelect = document.querySelector('#addModal select[name="dept_section_unit"]');
             if (deptSelect) {
                 var currentDeptSectionUnit = '<?= htmlspecialchars($current_user['department']) ?>/<?= htmlspecialchars($current_user['section']) ?>/<?= htmlspecialchars($current_user['unit']) ?>';

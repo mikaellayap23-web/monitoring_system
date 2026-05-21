@@ -404,21 +404,13 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label><i class="fas fa-building"></i> Department *</label>
+                                    <label><i class="fas fa-building"></i> Department/Section/Unit *</label>
                                     <select name="department" required>
-                                        <option value="">Select Department</option>
+                                        <option value="">Select Department/Section/Unit</option>
                                         <?php foreach ($departments as $dept): ?>
                                             <option value="<?= htmlspecialchars($dept['name']) ?>"><?= htmlspecialchars($dept['name']) ?></option>
                                         <?php endforeach; ?>
                                     </select>
-                                </div>
-                                <div class="form-group">
-                                    <label><i class="fas fa-layer-group"></i> Section</label>
-                                    <input type="text" name="section">
-                                </div>
-                                <div class="form-group">
-                                    <label><i class="fas fa-users"></i> Unit</label>
-                                    <input type="text" name="unit">
                                 </div>
                             </div>
                             
@@ -654,7 +646,7 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                             <th>Type</th>
                             <th>Title</th>
                             <th>Division</th>
-                            <th>Dept/Section</th>
+                            <th>Dept/Section/Unit</th>
                             <th>Date</th>
                             <th>Venue</th>
                             <th>OB/OT</th>

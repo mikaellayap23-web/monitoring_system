@@ -12,7 +12,7 @@ $role = $_SESSION['role'];
 
 $current_user = null;
 if ($role === 'unit_head') {
-    $stmt = $pdo->prepare("SELECT division, department, section, unit FROM users WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT division, department FROM users WHERE id = ?");
     $stmt->execute([$user_id]);
     $current_user = $stmt->fetch();
 }
@@ -24,27 +24,42 @@ if ($role === 'employee') {
     $where_clauses[] = "user_id = ?";
     $params[] = $user_id;
 } elseif ($role === 'unit_head') {
-    if ($current_user) {
-        if (!empty($current_user['division'])) {
-            $where_clauses[] = "division = ?";
-            $params[] = $current_user['division'];
-        }
-        if (!empty($current_user['department'])) {
-            $where_clauses[] = "department = ?";
-            $params[] = $current_user['department'];
-        }
-        if (!empty($current_user['section'])) {
-            $where_clauses[] = "section = ?";
-            $params[] = $current_user['section'];
-        }
-        if (!empty($current_user['unit'])) {
-            $where_clauses[] = "unit = ?";
-            $params[] = $current_user['unit'];
-        }
+    $filter_division = $_GET['division'] ?? '';
+    $filter_dept = $_GET['department'] ?? '';
+
+    if (empty($filter_division) && !empty($current_user['division'])) {
+        $filter_division = $current_user['division'];
+    }
+
+    if (empty($filter_dept) && !empty($current_user['department'])) {
+        $filter_dept = $current_user['department'];
+    }
+
+    if (!empty($filter_division)) {
+        $where_clauses[] = "division = ?";
+        $params[] = $filter_division;
+    }
+    if (!empty($filter_dept)) {
+        $where_clauses[] = "department = ?";
+        $params[] = $filter_dept;
+    }
+
+    $filter_employee = $_GET['employee'] ?? '';
+    if (!empty($filter_employee)) {
+        $where_clauses[] = "employee_name LIKE ?";
+        $params[] = "%$filter_employee%";
+    }
+
+    $filter_date_from = $_GET['date_from'] ?? '';
+    $filter_date_to = $_GET['date_to'] ?? '';
+    if (!empty($filter_date_from) && !empty($filter_date_to)) {
+        $where_clauses[] = "(date_from >= ? AND date_to <= ?)";
+        $params[] = $filter_date_from;
+        $params[] = $filter_date_to;
     }
 } else {
     $filter_division = $_GET['division'] ?? '';
-    $filter_dept_section_unit = $_GET['dept_section_unit'] ?? '';
+    $filter_dept = $_GET['department'] ?? '';
     $filter_employee = $_GET['employee'] ?? '';
     $filter_date_from = $_GET['date_from'] ?? '';
     $filter_date_to = $_GET['date_to'] ?? '';
@@ -53,24 +68,9 @@ if ($role === 'employee') {
         $where_clauses[] = "division = ?";
         $params[] = $filter_division;
     }
-    if (!empty($filter_dept_section_unit)) {
-        $parts = explode(' / ', $filter_dept_section_unit);
-        $filter_department = $parts[0] ?? '';
-        $filter_section = $parts[1] ?? '';
-        $filter_unit = $parts[2] ?? '';
-        
-        if (!empty($filter_department)) {
-            $where_clauses[] = "department = ?";
-            $params[] = $filter_department;
-        }
-        if (!empty($filter_section)) {
-            $where_clauses[] = "section = ?";
-            $params[] = $filter_section;
-        }
-        if (!empty($filter_unit)) {
-            $where_clauses[] = "unit = ?";
-            $params[] = $filter_unit;
-        }
+    if (!empty($filter_dept)) {
+        $where_clauses[] = "department = ?";
+        $params[] = $filter_dept;
     }
     if (!empty($filter_employee)) {
         $where_clauses[] = "employee_name LIKE ?";
@@ -86,45 +86,40 @@ if ($role === 'employee') {
 $where_sql = !empty($where_clauses) ? "WHERE " . implode(" AND ", $where_clauses) : "";
 
 $divisions = [];
-$deptSectionUnitOptions = [];
+$departments = [];
 $employees = [];
 
 if ($role === 'admin') {
     $divisions = $pdo->query("SELECT name FROM divisions ORDER BY name")->fetchAll();
-    
+
     $allDepartments = $pdo->query("SELECT name FROM departments ORDER BY name")->fetchAll();
     foreach ($allDepartments as $dept) {
-        $combined = $dept['name'] . ' / / ';
-        $deptSectionUnitOptions[] = $combined;
+        $departments[] = $dept['name'];
     }
-    
+
     $employees = $pdo->query("SELECT DISTINCT full_name as employee_name FROM users WHERE role != 'admin' AND full_name IS NOT NULL ORDER BY full_name")->fetchAll();
 } elseif ($role === 'unit_head' && $current_user) {
     if (!empty($current_user['division'])) {
         $divisions = [[ 'name' => $current_user['division'] ]];
     }
-    
-    $combined = ($current_user['department'] ?? '') . ' / ' . ($current_user['section'] ?? '') . ' / ' . ($current_user['unit'] ?? '');
-    if (trim($combined) !== ' / / ') {
-        $deptSectionUnitOptions = [$combined];
+
+    if (!empty($current_user['department'])) {
+        $departments = [$current_user['department']];
     }
-    
+
+    // FIX: Include both 'employee' and 'unit_head' roles
     $employeeStmt = $pdo->prepare("
-        SELECT DISTINCT u.full_name as employee_name 
-        FROM users u 
-        WHERE u.division = ? 
-        AND u.department = ? 
-        AND u.section = ? 
-        AND u.unit = ?
-        AND u.role = 'employee'
-        AND u.full_name IS NOT NULL 
+        SELECT DISTINCT u.full_name as employee_name
+        FROM users u
+        WHERE u.division = ?
+        AND u.department = ?
+        AND u.role IN ('employee', 'unit_head')
+        AND u.full_name IS NOT NULL
         ORDER BY u.full_name
     ");
     $employeeStmt->execute([
-        $current_user['division'], 
-        $current_user['department'], 
-        $current_user['section'], 
-        $current_user['unit']
+        $current_user['division'],
+        $current_user['department']
     ]);
     $employees = $employeeStmt->fetchAll();
 }
@@ -176,17 +171,27 @@ $ptr_total = $ptr_data['total'] ?? 0;
 $ptr_submitted = $ptr_data['submitted'] ?? 0;
 $ptr_percentage = $ptr_total > 0 ? round(($ptr_submitted / $ptr_total) * 100) : 0;
 
-$stmt = $pdo->prepare("SELECT COUNT(*) as total FROM users WHERE role != 'admin'");
-$stmt->execute();
-$total_employees = $stmt->fetch()['total'];
-
+$total_employees = 0;
 $attended_employees = 0;
 $not_attended = 0;
 $attended_percentage = 0;
+
 $bar_labels = [];
 $bar_attended = [];
 $bar_not_attended = [];
 $training_data = [];
+
+if ($role === 'unit_head' && $current_user) {
+    // Include both employees and unit heads in total count
+    $emp_stmt = $pdo->prepare("SELECT COUNT(*) as total FROM users WHERE role IN ('employee', 'unit_head') AND division = ? AND department = ?");
+    $emp_stmt->execute([
+        $current_user['division'] ?? '',
+        $current_user['department'] ?? ''
+    ]);
+    $total_employees = $emp_stmt->fetch()['total'];
+} else {
+    $total_employees = $pdo->query("SELECT COUNT(*) as total FROM users WHERE role IN ('employee', 'unit_head')")->fetch()['total'];
+}
 
 if ($role !== 'employee') {
     $stmt = $pdo->prepare("SELECT COUNT(DISTINCT user_id) as attended FROM trainings $where_sql");
@@ -195,30 +200,34 @@ if ($role !== 'employee') {
     $not_attended = $total_employees - $attended_employees;
     $attended_percentage = $total_employees > 0 ? round(($attended_employees / $total_employees) * 100) : 0;
     
-    $bar_sql = "SELECT 
-        COALESCE(u.department, 'Unassigned') as name,
-        COUNT(DISTINCT u.id) as total_employees,
-        COUNT(DISTINCT t.user_id) as attended
+    $bar_where = "";
+    $bar_params = [];
+    
+    if (!empty($filter_division)) {
+        $bar_where .= " AND u.division = ?";
+        $bar_params[] = $filter_division;
+    }
+    if (!empty($filter_dept)) {
+        $bar_where .= " AND u.department = ?";
+        $bar_params[] = $filter_dept;
+    }
+    
+    $bar_sql = "
+        SELECT
+            COALESCE(u.department, 'Unassigned') AS name,
+            COUNT(DISTINCT u.id) AS total_employees,
+            COUNT(DISTINCT t.user_id) AS attended
         FROM users u
         LEFT JOIN trainings t ON u.id = t.user_id
-        WHERE u.role != 'admin'";
+        WHERE u.role IN ('employee', 'unit_head')
+        $bar_where
+        GROUP BY COALESCE(u.department, 'Unassigned')
+        ORDER BY name
+    ";
     
-    if ($role === 'unit_head' && $current_user) {
-        if (!empty($current_user['division'])) {
-            $bar_sql .= " AND u.division = '" . addslashes($current_user['division']) . "'";
-        }
-        if (!empty($current_user['department'])) {
-            $bar_sql .= " AND u.department = '" . addslashes($current_user['department']) . "'";
-        }
-        if (!empty($current_user['section'])) {
-            $bar_sql .= " AND u.section = '" . addslashes($current_user['section']) . "'";
-        }
-        if (!empty($current_user['unit'])) {
-            $bar_sql .= " AND u.unit = '" . addslashes($current_user['unit']) . "'";
-        }
-    }
-    $bar_sql .= " GROUP BY COALESCE(u.department, 'Unassigned') ORDER BY name";
-    $bar_data = $pdo->query($bar_sql)->fetchAll();
+    $stmt = $pdo->prepare($bar_sql);
+    $stmt->execute($bar_params);
+    $bar_data = $stmt->fetchAll();
     
     foreach ($bar_data as $row) {
         $bar_labels[] = $row['name'];
@@ -226,13 +235,11 @@ if ($role !== 'employee') {
         $bar_not_attended[] = $row['total_employees'] - $row['attended'];
     }
     
-    $table_sql = "SELECT 
+    $table_sql = "SELECT
         t.employee_name,
         t.training_type,
         t.division,
         t.department,
-        t.section,
-        t.unit,
         t.title_of_activity,
         t.date_from,
         t.date_to,
@@ -359,11 +366,9 @@ if ($role !== 'employee') {
             
             <?php if ($role === 'unit_head' && $current_user): ?>
             <div class="unit-info">
-                <i class="fas fa-building"></i> 
-                Managing Unit: <strong><?= htmlspecialchars($current_user['division'] ?? '') ?></strong> / 
-                <strong><?= htmlspecialchars($current_user['department'] ?? '') ?></strong> / 
-                <strong><?= htmlspecialchars($current_user['section'] ?? '') ?></strong> / 
-                <strong><?= htmlspecialchars($current_user['unit'] ?? '') ?></strong>
+                <i class="fas fa-building"></i>
+                Managing Unit: <strong><?= htmlspecialchars($current_user['division'] ?? '') ?></strong> /
+                <strong><?= htmlspecialchars($current_user['department'] ?? '') ?></strong>
             </div>
             <?php endif; ?>
             
@@ -412,18 +417,22 @@ if ($role !== 'employee') {
                                     <option value="<?= htmlspecialchars($d['name']) ?>" <?= ($_GET['division'] ?? '') == $d['name'] ? 'selected' : '' ?>><?= htmlspecialchars($d['name']) ?></option>
                                 <?php endforeach; ?>
                             <?php elseif ($role === 'unit_head' && $current_user): ?>
-                                <option value="<?= htmlspecialchars($current_user['division']) ?>" selected><?= htmlspecialchars($current_user['division']) ?></option>
+                                <option value="<?= htmlspecialchars($current_user['division']) ?>" <?= ($_GET['division'] ?? '') == $current_user['division'] ? 'selected' : '' ?>><?= htmlspecialchars($current_user['division']) ?></option>
                             <?php endif; ?>
                         </select>
                     </div>
                     <div class="filter-group">
-                        <label><i class="fas fa-sitemap"></i> Department/Section/Unit</label>
-                        <select name="dept_section_unit">
-                            <option value="">All Departments/Sections/Units</option>
-                            <?php foreach ($deptSectionUnitOptions as $opt): ?>
-                                <option value="<?= htmlspecialchars($opt) ?>" <?= ($_GET['dept_section_unit'] ?? '') == $opt ? 'selected' : '' ?>><?= htmlspecialchars($opt) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                        <label><i class="fas fa-sitemap"></i> Department</label>
+                        <?php if ($role === 'admin'): ?>
+                            <select name="department">
+                                <option value="">All Departments</option>
+                                <?php foreach ($departments as $opt): ?>
+                                    <option value="<?= htmlspecialchars($opt) ?>" <?= ($_GET['department'] ?? '') == $opt ? 'selected' : '' ?>><?= htmlspecialchars($opt) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        <?php else: ?>
+                            <input type="text" name="department" placeholder="Department" value="<?= $role === 'unit_head' && $current_user ? htmlspecialchars($current_user['department'] ?? '') : htmlspecialchars($_GET['department'] ?? '') ?>">
+                        <?php endif; ?>
                     </div>
                     <div class="filter-group">
                         <label><i class="fas fa-user-tag"></i> Employee Name</label>
@@ -476,7 +485,7 @@ if ($role !== 'employee') {
                     <thead>
                         <tr>
                             <th>Division</th>
-                            <th>Department/Section/Unit</th>
+                            <th>Department</th>
                             <th>Employee Name</th>
                             <th>Type</th>
                             <th>Title of Activity</th>
@@ -486,11 +495,11 @@ if ($role !== 'employee') {
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if (count($training_data) > 0): ?>
+                        <?php if (isset($training_data) && count($training_data) > 0): ?>
                             <?php foreach ($training_data as $row): ?>
                                 <tr>
                                     <td><?= htmlspecialchars($row['division'] ?? '-') ?></td>
-                                    <td><?= htmlspecialchars(($row['department'] ?? '') . ' / ' . ($row['section'] ?? '') . ' / ' . ($row['unit'] ?? '')) ?></td>
+                                    <td><?= htmlspecialchars($row['department'] ?? '-') ?></td>
                                     <td><?= htmlspecialchars($row['employee_name']) ?></td>
                                     <td>
                                         <span style="padding:4px 8px; border-radius:12px; background:<?= $row['training_type'] == 'Internal' ? '#e3f2fd' : '#e8f5e9' ?>; font-size:11px;">
