@@ -23,7 +23,6 @@ $error_msg = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
     $user_id = $_POST['user_id'];
-    $employee_name = $_POST['employee_name'];
     $training_type = $_POST['training_type'];
     $division = $_POST['division'];
     $department = $_POST['department'];
@@ -35,6 +34,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
     $venue = $_POST['venue'];
     $hospital_order = $_POST['hospital_order'];
     $remarks = $_POST['remarks'];
+    
+    // Get employee name from users table
+    $stmt = $pdo->prepare("SELECT full_name, username FROM users WHERE id = ?");
+    $stmt->execute([$user_id]);
+    $user = $stmt->fetch();
+    $employee_name = $user['full_name'] ?: $user['username'];
     
     // External training fields (default null for Internal)
     $date_filed = null;
@@ -77,6 +82,83 @@ if (isset($_POST['update_ptr'])) {
     $success_msg = 'PTR status updated!';
 }
 
+// Handle AJAX Edit Request
+if (isset($_GET['ajax_get_training'])) {
+    $id = $_GET['ajax_get_training'];
+    $stmt = $pdo->prepare("SELECT * FROM trainings WHERE id = ?");
+    $stmt->execute([$id]);
+    $training = $stmt->fetch();
+    if ($training) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'training' => $training]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Training not found']);
+    }
+    exit;
+}
+
+// Handle AJAX Update Request
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_edit_training'])) {
+    $id = $_POST['training_id'];
+    $user_id = $_POST['user_id'];
+    $training_type = $_POST['training_type'];
+    $division = $_POST['division'];
+    $department = $_POST['department'];
+    $section = $_POST['section'];
+    $unit = $_POST['unit'];
+    $title_of_activity = $_POST['title_of_activity'];
+    $date_from = $_POST['date_from'];
+    $date_to = $_POST['date_to'];
+    $venue = $_POST['venue'];
+    $hospital_order = $_POST['hospital_order'];
+    $remarks = $_POST['remarks'];
+    $ob_ot = $_POST['ob_ot'] ?? null;
+    
+    // Get employee name from users table
+    $stmt = $pdo->prepare("SELECT full_name, username FROM users WHERE id = ?");
+    $stmt->execute([$user_id]);
+    $user = $stmt->fetch();
+    $employee_name = $user['full_name'] ?: $user['username'];
+    
+    $date_filed = null;
+    $ptr_deadline = null;
+    $ptr_file = null;
+    
+    // Get existing PTR file if not updating
+    $stmt = $pdo->prepare("SELECT ptr_file FROM trainings WHERE id = ?");
+    $stmt->execute([$id]);
+    $existing = $stmt->fetch();
+    $ptr_file = $existing['ptr_file'];
+    
+    if ($training_type === 'External') {
+        $date_filed = $_POST['date_filed'];
+        $ptr_deadline = $_POST['ptr_deadline'];
+        
+        if (isset($_FILES['ptr_file']) && $_FILES['ptr_file']['error'] === 0) {
+            $upload_dir = '../public/uploads/ptr_reports/';
+            if (!file_exists($upload_dir)) {
+                mkdir($upload_dir, 0777, true);
+            }
+            $file_name = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $_FILES['ptr_file']['name']);
+            $target_file = $upload_dir . $file_name;
+            if (move_uploaded_file($_FILES['ptr_file']['tmp_name'], $target_file)) {
+                $ptr_file = 'uploads/ptr_reports/' . $file_name;
+            }
+        }
+    }
+    
+    $stmt = $pdo->prepare("UPDATE trainings SET user_id=?, employee_name=?, training_type=?, division=?, department=?, section=?, unit=?, title_of_activity=?, date_from=?, date_to=?, venue=?, hospital_order=?, date_filed=?, ob_ot=?, ptr_deadline=?, ptr_file=?, remarks=? WHERE id=?");
+    
+    if ($stmt->execute([$user_id, $employee_name, $training_type, $division, $department, $section, $unit, $title_of_activity, $date_from, $date_to, $venue, $hospital_order, $date_filed, $ob_ot, $ptr_deadline, $ptr_file, $remarks, $id])) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'message' => 'Training updated successfully!']);
+    } else {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Failed to update training.']);
+    }
+    exit;
+}
+
 $search = $_GET['search'] ?? '';
 $query = "SELECT t.*, u.username FROM trainings t LEFT JOIN users u ON t.user_id = u.id";
 $search_params = [];
@@ -116,6 +198,7 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
         .btn-open-modal:hover { background: #0f2a3a; }
         .btn-open-modal i { margin-right: 8px; }
         
+        /* Modal Styles */
         .modal {
             display: none;
             position: fixed;
@@ -147,6 +230,7 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
             align-items: center;
         }
         .modal-header h2 { margin: 0; font-size: 1.2rem; }
+        .modal-header h2 i { margin-right: 10px; }
         .close-modal {
             color: white;
             font-size: 24px;
@@ -197,8 +281,30 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
             font-weight: 600;
         }
         .btn-submit:hover { background: #0f2a3a; }
-        .btn-edit { background: #456882; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
-        .btn-delete { background: #dc2626; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+        .btn-edit { 
+            background: #456882; 
+            color: white; 
+            padding: 4px 8px; 
+            border-radius: 4px; 
+            text-decoration: none; 
+            font-size: 12px; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 4px;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-delete { 
+            background: #dc2626; 
+            color: white; 
+            padding: 4px 8px; 
+            border-radius: 4px; 
+            text-decoration: none; 
+            font-size: 12px; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 4px; 
+        }
         .search-bar { margin-bottom: 20px; }
         .search-bar input { padding: 8px; width: 300px; border: 1px solid #ddd; border-radius: 6px; }
         .data-table { background: white; border-radius: 12px; border: 1px solid rgba(210,193,182,0.3); overflow-x: auto; }
@@ -208,10 +314,35 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
         .alert-success { background: #d4edda; color: #155724; padding: 10px; border-radius: 6px; margin-bottom: 15px; }
         .alert-error { background: #f8d7da; color: #721c24; padding: 10px; border-radius: 6px; margin-bottom: 15px; }
         .external-fields { display: none; }
+        .ob-fields { display: none; }
         .ptr-badge { display: inline-block; padding: 4px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; }
         .ptr-submitted { background: #d4edda; color: #155724; }
         .ptr-pending { background: #f8d7da; color: #721c24; }
         .ptr-na { background: #e2e3e5; color: #383d41; }
+        
+        /* Edit Modal specific */
+        .modal-edit .modal-header { background: #2c3e50; }
+        .loading-spinner {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+        .loading-spinner i { font-size: 40px; color: #1B3C53; }
+        .edit-form-container { display: block; }
+        .edit-form-container.hide { display: none; }
+        .alert-success-modal, .alert-error-modal {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .alert-success-modal { background: #d4edda; color: #155724; }
+        .alert-error-modal { background: #f8d7da; color: #721c24; }
+        .current-ptr-file {
+            font-size: 11px;
+            margin-top: 5px;
+        }
+        .current-ptr-file a { color: #1B3C53; }
     </style>
 </head>
 <body>
@@ -230,15 +361,16 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                 <div class="alert-error"><i class="fas fa-exclamation-triangle"></i> <?= $error_msg ?></div>
             <?php endif; ?>
             
-            <button class="btn-open-modal" onclick="openModal()">
+            <button class="btn-open-modal" onclick="openAddModal()">
                 <i class="fas fa-plus-circle"></i> Add Training
             </button>
             
-            <div id="trainingModal" class="modal">
+            <!-- Add Training Modal -->
+            <div id="addModal" class="modal">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h2><i class="fas fa-plus-circle"></i> Add New Training</h2>
-                        <span class="close-modal" onclick="closeModal()">&times;</span>
+                        <span class="close-modal" onclick="closeAddModal()">&times;</span>
                     </div>
                     <div class="modal-body">
                         <form method="post" enctype="multipart/form-data">
@@ -253,12 +385,8 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label><i class="fas fa-user-tag"></i> Employee Name *</label>
-                                    <input type="text" name="employee_name" required>
-                                </div>
-                                <div class="form-group">
                                     <label><i class="fas fa-tag"></i> Training Type *</label>
-                                    <select name="training_type" id="training_type" required onchange="toggleExternalFields()">
+                                    <select name="training_type" id="add_training_type" required onchange="toggleAddExternalFields()">
                                         <option value="Internal">Internal</option>
                                         <option value="External">External</option>
                                     </select>
@@ -326,7 +454,7 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                                 </div>
                             </div>
                             
-                            <div id="external_fields" class="external-fields">
+                            <div id="add_external_fields" class="external-fields">
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label><i class="fas fa-calendar-day"></i> Date Filed *</label>
@@ -360,6 +488,149 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                             
                             <button type="submit" name="add_training" class="btn-submit"><i class="fas fa-save"></i> Add Training</button>
                         </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Edit Training Modal -->
+            <div id="editModal" class="modal modal-edit">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-edit"></i> Edit Training Record</h2>
+                        <span class="close-modal" onclick="closeEditModal()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div id="editAlertSuccess" class="alert-success-modal">
+                            <i class="fas fa-check-circle"></i> <span id="editSuccessMsg"></span>
+                        </div>
+                        <div id="editAlertError" class="alert-error-modal">
+                            <i class="fas fa-exclamation-triangle"></i> <span id="editErrorMsg"></span>
+                        </div>
+                        <div id="loadingSpinner" class="loading-spinner">
+                            <i class="fas fa-spinner fa-pulse"></i> Loading training data...
+                        </div>
+                        <div id="editFormContainer" class="edit-form-container hide">
+                            <form id="editForm" enctype="multipart/form-data">
+                                <input type="hidden" name="ajax_edit_training" value="1">
+                                <input type="hidden" name="training_id" id="edit_training_id">
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label><i class="fas fa-user"></i> Employee *</label>
+                                        <select name="user_id" id="edit_user_id" required>
+                                            <option value="">Select Employee</option>
+                                            <?php foreach ($users as $user): ?>
+                                                <option value="<?= $user['id'] ?>"><?= htmlspecialchars($user['full_name'] ?: $user['username']) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label><i class="fas fa-tag"></i> Training Type *</label>
+                                        <select name="training_type" id="edit_training_type" required onchange="toggleEditExternalFields()">
+                                            <option value="Internal">Internal</option>
+                                            <option value="External">External</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label><i class="fas fa-building"></i> Division *</label>
+                                        <select name="division" id="edit_division" required>
+                                            <option value="">Select Division</option>
+                                            <?php foreach ($divisions as $div): ?>
+                                                <option value="<?= htmlspecialchars($div['name']) ?>"><?= htmlspecialchars($div['name']) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label><i class="fas fa-building"></i> Department *</label>
+                                        <select name="department" id="edit_department" required>
+                                            <option value="">Select Department</option>
+                                            <?php foreach ($departments as $dept): ?>
+                                                <option value="<?= htmlspecialchars($dept['name']) ?>"><?= htmlspecialchars($dept['name']) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label><i class="fas fa-layer-group"></i> Section</label>
+                                        <input type="text" name="section" id="edit_section">
+                                    </div>
+                                    <div class="form-group">
+                                        <label><i class="fas fa-users"></i> Unit</label>
+                                        <input type="text" name="unit" id="edit_unit">
+                                    </div>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label><i class="fas fa-heading"></i> Title of Activity *</label>
+                                        <input type="text" name="title_of_activity" id="edit_title_of_activity" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label><i class="fas fa-calendar-alt"></i> Date From *</label>
+                                        <input type="date" name="date_from" id="edit_date_from" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label><i class="fas fa-calendar-alt"></i> Date To *</label>
+                                        <input type="date" name="date_to" id="edit_date_to" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label><i class="fas fa-map-marker-alt"></i> Venue *</label>
+                                        <select name="venue" id="edit_venue" required>
+                                            <option value="Online">Online</option>
+                                            <option value="Auditorium">Auditorium</option>
+                                            <option value="Executive Lounge">Executive Lounge</option>
+                                            <option value="Local">Local</option>
+                                            <option value="International">International</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label><i class="fas fa-file-alt"></i> Hospital Order</label>
+                                        <input type="text" name="hospital_order" id="edit_hospital_order">
+                                    </div>
+                                </div>
+                                
+                                <div id="edit_external_fields" class="external-fields">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label><i class="fas fa-calendar-day"></i> Date Filed</label>
+                                            <input type="date" name="date_filed" id="edit_date_filed">
+                                        </div>
+                                        <div class="form-group">
+                                            <label><i class="fas fa-briefcase"></i> OB/OT</label>
+                                            <select name="ob_ot" id="edit_ob_ot">
+                                                <option value="">Select OB/OT</option>
+                                                <option value="Official Business">Official Business</option>
+                                                <option value="Official Time">Official Time</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label><i class="fas fa-hourglass-end"></i> PTR Deadline</label>
+                                            <input type="date" name="ptr_deadline" id="edit_ptr_deadline">
+                                        </div>
+                                        <div class="form-group">
+                                            <label><i class="fas fa-file-upload"></i> PTR File</label>
+                                            <input type="file" name="ptr_file" id="edit_ptr_file">
+                                            <div id="currentPtrFile" class="current-ptr-file"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label><i class="fas fa-comment"></i> Remarks</label>
+                                        <textarea name="remarks" id="edit_remarks" rows="2"></textarea>
+                                    </div>
+                                </div>
+                                
+                                <button type="button" class="btn-submit" onclick="submitEditForm()"><i class="fas fa-save"></i> Update Training</button>
+                                <button type="button" class="btn-submit" style="background:#666;" onclick="closeEditModal()"><i class="fas fa-times"></i> Cancel</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -419,7 +690,7 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <a href="edit_training.php?id=<?= $training['id'] ?>" class="btn-edit"><i class="fas fa-edit"></i> Edit</a>
+                                    <button onclick="openEditModal(<?= $training['id'] ?>)" class="btn-edit"><i class="fas fa-edit"></i> Edit</button>
                                     <a href="?delete=<?= $training['id'] ?>" class="btn-delete" onclick="return confirm('Delete this training?')"><i class="fas fa-trash-alt"></i> Delete</a>
                                 </td>
                             </tr>
@@ -431,43 +702,179 @@ $users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY usernam
     </div>
     
     <script>
-        function toggleExternalFields() {
-            var type = document.getElementById('training_type').value;
-            var externalFields = document.getElementById('external_fields');
+        // Add Modal Functions
+        function openAddModal() {
+            document.getElementById('addModal').style.display = 'block';
+            document.body.style.overflow = 'hidden';
+            toggleAddExternalFields();
+        }
+        
+        function closeAddModal() {
+            document.getElementById('addModal').style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+        
+        function toggleAddExternalFields() {
+            var type = document.getElementById('add_training_type').value;
+            var externalFields = document.getElementById('add_external_fields');
             if (type === 'External') {
                 externalFields.style.display = 'block';
-                // Make external fields required
-                document.querySelectorAll('#external_fields input, #external_fields select').forEach(function(el) {
+                document.querySelectorAll('#add_external_fields input, #add_external_fields select').forEach(function(el) {
                     if (el.name !== 'ptr_file') el.setAttribute('required', 'required');
                 });
             } else {
                 externalFields.style.display = 'none';
-                // Remove required attribute from external fields
-                document.querySelectorAll('#external_fields input, #external_fields select').forEach(function(el) {
+                document.querySelectorAll('#add_external_fields input, #add_external_fields select').forEach(function(el) {
                     el.removeAttribute('required');
                 });
             }
         }
         
-        function openModal() {
-            document.getElementById('trainingModal').style.display = 'block';
+        // Edit Modal Functions
+        function openEditModal(id) {
+            var modal = document.getElementById('editModal');
+            var loading = document.getElementById('loadingSpinner');
+            var formContainer = document.getElementById('editFormContainer');
+            var alertSuccess = document.getElementById('editAlertSuccess');
+            var alertError = document.getElementById('editAlertError');
+            
+            modal.style.display = 'block';
             document.body.style.overflow = 'hidden';
-            toggleExternalFields();
+            
+            // Reset and show loading
+            loading.style.display = 'block';
+            formContainer.classList.add('hide');
+            alertSuccess.style.display = 'none';
+            alertError.style.display = 'none';
+            
+            // Fetch training data
+            fetch('?ajax_get_training=' + id)
+                .then(response => response.json())
+                .then(data => {
+                    loading.style.display = 'none';
+                    if (data.success) {
+                        populateEditForm(data.training);
+                        formContainer.classList.remove('hide');
+                    } else {
+                        alertError.querySelector('#editErrorMsg').textContent = data.message || 'Failed to load training data';
+                        alertError.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    loading.style.display = 'none';
+                    alertError.querySelector('#editErrorMsg').textContent = 'Error loading data';
+                    alertError.style.display = 'block';
+                    console.error('Error:', error);
+                });
         }
         
-        function closeModal() {
-            document.getElementById('trainingModal').style.display = 'none';
-            document.body.style.overflow = 'auto';
+        function populateEditForm(training) {
+            document.getElementById('edit_training_id').value = training.id;
+            document.getElementById('edit_user_id').value = training.user_id;
+            document.getElementById('edit_training_type').value = training.training_type;
+            document.getElementById('edit_division').value = training.division;
+            document.getElementById('edit_department').value = training.department;
+            document.getElementById('edit_section').value = training.section || '';
+            document.getElementById('edit_unit').value = training.unit || '';
+            document.getElementById('edit_title_of_activity').value = training.title_of_activity;
+            document.getElementById('edit_date_from').value = training.date_from;
+            document.getElementById('edit_date_to').value = training.date_to;
+            document.getElementById('edit_venue').value = training.venue;
+            document.getElementById('edit_ob_ot').value = training.ob_ot || '';
+            document.getElementById('edit_hospital_order').value = training.hospital_order || '';
+            document.getElementById('edit_remarks').value = training.remarks || '';
+            
+            if (training.date_filed) {
+                document.getElementById('edit_date_filed').value = training.date_filed;
+            }
+            if (training.ptr_deadline) {
+                document.getElementById('edit_ptr_deadline').value = training.ptr_deadline;
+            }
+            
+            // Show current PTR file if exists
+            var ptrFileDiv = document.getElementById('currentPtrFile');
+            if (training.ptr_file) {
+                ptrFileDiv.innerHTML = '<i class="fas fa-file-pdf"></i> Current: <a href="../public/' + training.ptr_file + '" target="_blank">View PTR File</a>';
+            } else {
+                ptrFileDiv.innerHTML = '';
+            }
+            
+            toggleEditExternalFields();
         }
         
-        window.onclick = function(event) {
-            var modal = document.getElementById('trainingModal');
-            if (event.target == modal) {
-                closeModal();
+        function toggleEditExternalFields() {
+            var type = document.getElementById('edit_training_type').value;
+            var externalFields = document.getElementById('edit_external_fields');
+            if (type === 'External') {
+                externalFields.style.display = 'block';
+            } else {
+                externalFields.style.display = 'none';
             }
         }
         
-        toggleExternalFields();
+        function submitEditForm() {
+            var form = document.getElementById('editForm');
+            var formData = new FormData(form);
+            var alertSuccess = document.getElementById('editAlertSuccess');
+            var alertError = document.getElementById('editAlertError');
+            var submitBtn = document.querySelector('#editFormContainer .btn-submit');
+            
+            // Disable button and show loading
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Updating...';
+            
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Training';
+                
+                if (data.success) {
+                    alertSuccess.querySelector('#editSuccessMsg').textContent = data.message;
+                    alertSuccess.style.display = 'block';
+                    alertError.style.display = 'none';
+                    
+                    // Reload page after 1.5 seconds to show updated data
+                    setTimeout(function() {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    alertError.querySelector('#editErrorMsg').textContent = data.message || 'Update failed';
+                    alertError.style.display = 'block';
+                    alertSuccess.style.display = 'none';
+                }
+            })
+            .catch(error => {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Training';
+                alertError.querySelector('#editErrorMsg').textContent = 'Error submitting form';
+                alertError.style.display = 'block';
+                console.error('Error:', error);
+            });
+        }
+        
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+        
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            var addModal = document.getElementById('addModal');
+            var editModal = document.getElementById('editModal');
+            if (event.target == addModal) {
+                closeAddModal();
+            }
+            if (event.target == editModal) {
+                closeEditModal();
+            }
+        }
+        
+        // Initialize
+        toggleAddExternalFields();
     </script>
 </body>
 </html>

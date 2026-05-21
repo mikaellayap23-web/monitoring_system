@@ -83,10 +83,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
     }
 }
 
-// Handle edit user
-if (isset($_POST['edit_user'])) {
+// Handle AJAX Edit Request
+if (isset($_GET['ajax_get_user'])) {
+    $id = $_GET['ajax_get_user'];
+    // Verify this user belongs to unit head's team and is employee
+    $stmt = $pdo->prepare("
+        SELECT id, full_name, email 
+        FROM users 
+        WHERE id = ? 
+        AND division = ?
+        AND department = ? 
+        AND section = ? 
+        AND unit = ?
+        AND role = 'employee'
+    ");
+    $stmt->execute([$id, $current_user['division'], $current_user['department'], $current_user['section'], $current_user['unit']]);
+    $user = $stmt->fetch();
+    
+    if ($user) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => true, 'user' => $user]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'User not found or unauthorized']);
+    }
+    exit;
+}
+
+// Handle AJAX Edit Update Request
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_edit_user'])) {
     $id = $_POST['user_id'];
     $full_name = $_POST['full_name'];
+    $email = $_POST['email'];
+    $password = $_POST['password'];
     
     // Verify this user belongs to unit head's team and is employee
     $checkStmt = $pdo->prepare("
@@ -99,13 +127,44 @@ if (isset($_POST['edit_user'])) {
         AND role = 'employee'
     ");
     $checkStmt->execute([$id, $current_user['division'], $current_user['department'], $current_user['section'], $current_user['unit']]);
+    
     if ($checkStmt->fetch()) {
-        $stmt = $pdo->prepare("UPDATE users SET full_name = ? WHERE id = ?");
-        $stmt->execute([$full_name, $id]);
-        $success_msg = 'User updated successfully!';
+        // Check if email already exists for another user
+        $emailCheck = $pdo->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
+        $emailCheck->execute([$email, $id]);
+        if ($emailCheck->fetch()) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Email already exists for another user.']);
+            exit;
+        }
+        
+        // Generate new username from email
+        $username = explode('@', $email)[0];
+        
+        // Update user
+        if (!empty($password)) {
+            // Update with new password
+            $password_hash = password_hash($password, PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare("UPDATE users SET full_name = ?, email = ?, username = ?, password_hash = ? WHERE id = ?");
+            $result = $stmt->execute([$full_name, $email, $username, $password_hash, $id]);
+        } else {
+            // Update without changing password
+            $stmt = $pdo->prepare("UPDATE users SET full_name = ?, email = ?, username = ? WHERE id = ?");
+            $result = $stmt->execute([$full_name, $email, $username, $id]);
+        }
+        
+        if ($result) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'message' => 'User updated successfully!']);
+        } else {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Failed to update user.']);
+        }
     } else {
-        $error_msg = 'You can only edit employees from your unit.';
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'You can only edit employees from your unit.']);
     }
+    exit;
 }
 
 // Get users under this Unit Head (same division, department, section, unit, and role = employee)
@@ -121,19 +180,13 @@ $usersStmt = $pdo->prepare("
 $usersStmt->execute([$current_user['division'], $current_user['department'], $current_user['section'], $current_user['unit']]);
 $users = $usersStmt->fetchAll();
 
-$edit_user = null;
-if (isset($_GET['edit'])) {
-    $stmt = $pdo->prepare("
-        SELECT * FROM users 
-        WHERE id = ? 
-        AND division = ?
-        AND department = ? 
-        AND section = ? 
-        AND unit = ?
-        AND role = 'employee'
-    ");
-    $stmt->execute([$_GET['edit'], $current_user['division'], $current_user['department'], $current_user['section'], $current_user['unit']]);
-    $edit_user = $stmt->fetch();
+// Get success/error message from URL
+if (isset($_GET['msg'])) {
+    if ($_GET['msg'] === 'deleted') {
+        $success_msg = 'User deleted successfully!';
+    } elseif ($_GET['msg'] === 'error') {
+        $error_msg = 'Failed to delete user.';
+    }
 }
 ?>
 
@@ -144,6 +197,7 @@ if (isset($_GET['edit'])) {
     <title>User Management - Unit Head</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/user_management.css">
+    <link rel="stylesheet" href="../assets/css/sidebar.css">
     <style>
         .info-box {
             background: #e8f4fd;
@@ -183,6 +237,33 @@ if (isset($_GET['edit'])) {
             margin-right: 8px;
         }
         
+        .btn-edit-modal {
+            background: #456882;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+        
+        .btn-edit-modal:hover {
+            background: #2c4e6e;
+        }
+        
+        .btn-delete {
+            background: #dc2626;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
         .modal {
             display: none;
             position: fixed;
@@ -207,7 +288,7 @@ if (isset($_GET['edit'])) {
             padding: 0;
             border-radius: 12px;
             width: 90%;
-            max-width: 600px;
+            max-width: 500px;
             box-shadow: 0 5px 20px rgba(0,0,0,0.3);
             animation: slideDown 0.3s;
             overflow: visible;
@@ -237,6 +318,10 @@ if (isset($_GET['edit'])) {
         .modal-header h2 {
             margin: 0;
             font-size: 1.2rem;
+        }
+        
+        .modal-header h2 i {
+            margin-right: 10px;
         }
         
         .close-modal {
@@ -333,6 +418,74 @@ if (isset($_GET['edit'])) {
         .button-container {
             text-align: left;
             margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .loading-spinner {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+        
+        .loading-spinner i {
+            font-size: 40px;
+            color: #1B3C53;
+        }
+        
+        .edit-form-container {
+            display: block;
+        }
+        
+        .edit-form-container.hide {
+            display: none;
+        }
+        
+        .alert-success-modal, .alert-error-modal {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .alert-success-modal {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+        
+        .alert-error-modal {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .btn-cancel-modal {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        
+        .btn-cancel-modal:hover {
+            background: #5a6268;
+        }
+        
+        .password-hint {
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
         }
     </style>
 </head>
@@ -358,19 +511,19 @@ if (isset($_GET['edit'])) {
             <?php endif; ?>
             
             <!-- Add User Button -->
-            <button class="btn-open-modal" onclick="openModal()">
+            <button class="btn-open-modal" onclick="openAddModal()">
                 <i class="fas fa-user-plus"></i> Add New User
             </button>
             
-            <!-- Modal -->
-            <div id="userModal" class="modal">
+            <!-- Add User Modal -->
+            <div id="addModal" class="modal">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h2><i class="fas fa-user-plus"></i> Add New User</h2>
-                        <span class="close-modal" onclick="closeModal()">&times;</span>
+                        <span class="close-modal" onclick="closeAddModal()">&times;</span>
                     </div>
                     <div class="modal-body">
-                        <form method="post" id="userForm">
+                        <form method="post" id="addUserForm">
                             <div class="form-row">
                                 <div class="form-group">
                                     <label><i class="fas fa-id-card"></i> Full Name *</label>
@@ -424,6 +577,65 @@ if (isset($_GET['edit'])) {
                 </div>
             </div>
             
+            <!-- Edit User Modal - Only Full Name, Email, Password -->
+            <div id="editModal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-user-edit"></i> Edit User</h2>
+                        <span class="close-modal" onclick="closeEditModal()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div id="editAlertSuccess" class="alert-success-modal">
+                            <i class="fas fa-check-circle"></i> <span id="editSuccessMsg"></span>
+                        </div>
+                        <div id="editAlertError" class="alert-error-modal">
+                            <i class="fas fa-exclamation-triangle"></i> <span id="editErrorMsg"></span>
+                        </div>
+                        <div id="loadingSpinner" class="loading-spinner">
+                            <i class="fas fa-spinner fa-pulse"></i> Loading user data...
+                        </div>
+                        <div id="editFormContainer" class="edit-form-container hide">
+                            <form id="editForm">
+                                <input type="hidden" name="ajax_edit_user" value="1">
+                                <input type="hidden" name="user_id" id="edit_user_id">
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label><i class="fas fa-id-card"></i> Full Name *</label>
+                                        <input type="text" name="full_name" id="edit_full_name" required>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label><i class="fas fa-envelope"></i> Email *</label>
+                                        <input type="email" name="email" id="edit_email" required>
+                                        <small>Username will be auto-generated from email</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label><i class="fas fa-lock"></i> Password</label>
+                                        <input type="password" name="password" id="edit_password" placeholder="Leave blank to keep current password">
+                                        <small class="password-hint">Leave empty to keep current password</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="button-container">
+                                    <button type="button" class="btn-submit" onclick="submitEditForm()">
+                                        <i class="fas fa-save"></i> Update User
+                                    </button>
+                                    <button type="button" class="btn-cancel-modal" onclick="closeEditModal()">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="data-table">
                 <h3><i class="fas fa-list"></i> Users Under <?= htmlspecialchars($current_user['department']) ?> / <?= htmlspecialchars($current_user['section']) ?> / <?= htmlspecialchars($current_user['unit']) ?> (<?= count($users) ?>)</h3>
                 <table>
@@ -456,12 +668,16 @@ if (isset($_GET['edit'])) {
                                     </span>
                                 </td>
                                 <td><?= htmlspecialchars($user['division'] ?? '') ?></td>
-                                <td><?= htmlspecialchars(($user['department'] ?? '') . '/' . ($user['section'] ?? '') . '/' . ($user['unit'] ?? '')) ?></td>
+                                <td><?= htmlspecialchars(($user['department'] ?? '') . ' / ' . ($user['section'] ?? '') . ' / ' . ($user['unit'] ?? '')) ?></td>
                                 <td><?= date('M d, Y', strtotime($user['created_at'])) ?></td>
-                                <td>
-                                    <a href="?edit=<?= $user['id'] ?>" class="btn-edit"><i class="fas fa-edit"></i> Edit</a>
+                                <td class="action-buttons">
+                                    <button onclick="openEditModal(<?= $user['id'] ?>)" class="btn-edit-modal">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
                                     <?php if ($user['id'] != $_SESSION['user_id']): ?>
-                                        <a href="?delete=<?= $user['id'] ?>" class="btn-delete" onclick="return confirm('Delete this user? This action cannot be undone.')"><i class="fas fa-trash-alt"></i> Delete</a>
+                                        <a href="?delete=<?= $user['id'] ?>" class="btn-delete" onclick="return confirm('Delete this user? This action cannot be undone.')">
+                                            <i class="fas fa-trash-alt"></i> Delete
+                                        </a>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -473,21 +689,138 @@ if (isset($_GET['edit'])) {
     </div>
     
     <script>
-        function openModal() {
-            document.getElementById('userModal').style.display = 'block';
+        // Add Modal Functions
+        function openAddModal() {
+            document.getElementById('addModal').style.display = 'block';
             document.body.style.overflow = 'hidden';
         }
         
-        function closeModal() {
-            document.getElementById('userModal').style.display = 'none';
+        function closeAddModal() {
+            document.getElementById('addModal').style.display = 'none';
+            document.body.style.overflow = 'auto';
+            // Reset form
+            document.getElementById('addUserForm').reset();
+        }
+        
+        // Edit Modal Functions
+        function openEditModal(id) {
+            var modal = document.getElementById('editModal');
+            var loading = document.getElementById('loadingSpinner');
+            var formContainer = document.getElementById('editFormContainer');
+            var alertSuccess = document.getElementById('editAlertSuccess');
+            var alertError = document.getElementById('editAlertError');
+            
+            modal.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+            
+            // Reset and show loading
+            loading.style.display = 'block';
+            formContainer.classList.add('hide');
+            alertSuccess.style.display = 'none';
+            alertError.style.display = 'none';
+            
+            // Fetch user data
+            fetch('?ajax_get_user=' + id)
+                .then(response => response.json())
+                .then(data => {
+                    loading.style.display = 'none';
+                    if (data.success) {
+                        populateEditForm(data.user);
+                        formContainer.classList.remove('hide');
+                    } else {
+                        alertError.querySelector('#editErrorMsg').textContent = data.message || 'Failed to load user data';
+                        alertError.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    loading.style.display = 'none';
+                    alertError.querySelector('#editErrorMsg').textContent = 'Error loading data';
+                    alertError.style.display = 'block';
+                    console.error('Error:', error);
+                });
+        }
+        
+        function populateEditForm(user) {
+            document.getElementById('edit_user_id').value = user.id;
+            document.getElementById('edit_full_name').value = user.full_name || '';
+            document.getElementById('edit_email').value = user.email;
+            document.getElementById('edit_password').value = '';
+        }
+        
+        function submitEditForm() {
+            var form = document.getElementById('editForm');
+            var formData = new FormData(form);
+            var alertSuccess = document.getElementById('editAlertSuccess');
+            var alertError = document.getElementById('editAlertError');
+            var submitBtn = document.querySelector('#editFormContainer .btn-submit');
+            
+            // Validate email
+            var email = document.getElementById('edit_email').value;
+            if (!email) {
+                alertError.querySelector('#editErrorMsg').textContent = 'Email is required';
+                alertError.style.display = 'block';
+                return;
+            }
+            
+            // Validate full name
+            var fullName = document.getElementById('edit_full_name').value;
+            if (!fullName) {
+                alertError.querySelector('#editErrorMsg').textContent = 'Full Name is required';
+                alertError.style.display = 'block';
+                return;
+            }
+            
+            // Disable button and show loading
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Updating...';
+            
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-save"></i> Update User';
+                
+                if (data.success) {
+                    alertSuccess.querySelector('#editSuccessMsg').textContent = data.message;
+                    alertSuccess.style.display = 'block';
+                    alertError.style.display = 'none';
+                    
+                    // Reload page after 1.5 seconds to show updated data
+                    setTimeout(function() {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    alertError.querySelector('#editErrorMsg').textContent = data.message || 'Update failed';
+                    alertError.style.display = 'block';
+                    alertSuccess.style.display = 'none';
+                }
+            })
+            .catch(error => {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-save"></i> Update User';
+                alertError.querySelector('#editErrorMsg').textContent = 'Error submitting form';
+                alertError.style.display = 'block';
+                console.error('Error:', error);
+            });
+        }
+        
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
             document.body.style.overflow = 'auto';
         }
         
-        // Close modal when clicking outside of it
+        // Close modals when clicking outside
         window.onclick = function(event) {
-            var modal = document.getElementById('userModal');
-            if (event.target == modal) {
-                closeModal();
+            var addModal = document.getElementById('addModal');
+            var editModal = document.getElementById('editModal');
+            if (event.target == addModal) {
+                closeAddModal();
+            }
+            if (event.target == editModal) {
+                closeEditModal();
             }
         }
     </script>

@@ -83,6 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_training'])) {
     <title>Edit Training - Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/training_list.css">
+    <link rel="stylesheet" href="../assets/css/sidebar.css">
 </head>
 <body>
     <div class="app-container">

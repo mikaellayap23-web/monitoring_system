@@ -1,38 +1,121 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; }
-
-.app-container { display: flex; min-height: 100vh; }
-
-.main-content { flex: 1; margin-left: 240px; padding: 2rem; transition: margin-left 0.3s ease; }
-
+/* Sidebar - Enhanced with Logo */
 .sidebar {
-    width: 240px;
+    width: 260px;
     background: #1B3C53;
     height: 100vh;
     position: fixed;
     left: 0;
     top: 0;
     overflow-y: auto;
-    padding: 1rem 0.75rem;
+    padding: 1.5rem 1rem;
+    transition: all 0.3s ease;
+    z-index: 100;
 }
 
-.sidebar h3 {
+/* Sidebar Header with Logo */
+.sidebar-header {
+    text-align: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-logo {
+    width: 90px;
+    height: auto;
+    margin-bottom: 0.75rem;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+    transition: transform 0.2s ease;
+}
+
+.sidebar-logo:hover {
+    transform: scale(1.05);
+}
+
+.sidebar-title h3 {
     color: #ffffff;
-    font-size: 1.05rem;
-    font-weight: 600;
-    margin-bottom: 1.2rem;
-    padding: 0 1rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: 1px;
+}
+
+.sidebar-title span {
+    color: #BFDDF0;
+    font-size: 1rem;
+    font-weight: 500;
+    display: block;
+    margin-top: 0.2rem;
+    letter-spacing: 0.5px;
+}
+
+
+/* Profile Section Inside Sidebar */
+.sidebar-profile {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
+    padding: 1rem 0.75rem;
+    margin-bottom: 1.5rem;
+    background: rgba(191, 221, 240, 0.08);
+    border-radius: 12px;
+    border: 1px solid rgba(191, 221, 240, 0.15);
 }
 
-.sidebar ul { list-style: none; padding: 0; margin: 0; }
+.profile-avatar {
+    flex-shrink: 0;
+}
 
-.sidebar li { margin-bottom: 0.3rem; }
+.profile-avatar i {
+    font-size: 2.4rem;
+    color: #BFDDF0;
+}
+
+.profile-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.profile-name {
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.profile-role {
+    color: #BFDDF0;
+    font-size: 0.7rem;
+    font-weight: 500;
+    margin-top: 2px;
+    text-transform: capitalize;
+}
+
+/* Optional: Add hover effect for profile */
+.sidebar-profile:hover {
+    background: rgba(191, 221, 240, 0.12);
+    border-color: rgba(191, 221, 240, 0.25);
+    transition: all 0.2s ease;
+}
+
+
+
+/* Remove old h3 style if exists */
+.sidebar h3 {
+    display: none;
+}
+
+.sidebar ul { 
+    list-style: none; 
+    padding: 0; 
+    margin: 0; 
+}
+
+.sidebar li { 
+    margin-bottom: 0.3rem; 
+}
 
 .sidebar a {
     display: flex;
@@ -40,53 +123,56 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Robo
     gap: 12px;
     color: #e2e8f0;
     text-decoration: none;
-    padding: 0.6rem 1rem;
-    border-radius: 8px;
+    padding: 0.7rem 1rem;
+    border-radius: 10px;
     font-weight: 500;
     font-size: 0.88rem;
     transition: all 0.2s ease;
 }
 
-.sidebar a:hover { background: rgba(255, 255, 255, 0.1); color: #ffffff; }
+.sidebar a:hover { 
+    background: rgba(191, 221, 240, 0.15); 
+    color: #ffffff;
+    transform: translateX(3px);
+}
 
-.sidebar a i { width: 20px; text-align: center; }
+.sidebar a i { 
+    width: 22px; 
+    text-align: center;
+    font-size: 1rem;
+}
 
-.header { background: #ffffff; padding: 1.1rem 1.5rem; border-radius: 16px; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(27, 60, 83, 0.05); border: 1px solid rgba(210, 193, 182, 0.3); }
+/* Logout item special styling */
+.logout-item {
+    margin-top: 1.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
 
-.header h1 { font-size: 1.35rem; font-weight: 600; color: #1B3C53; }
+.logout-item a {
+    color: #fecaca;
+}
 
-.header h1 i { margin-right: 8px; color: #456882; }
+.logout-item a:hover {
+    background: rgba(220, 38, 38, 0.2);
+    color: #ffffff;
+}
 
-.user-info { background: #f1f5f9; padding: 0.4rem 0.9rem; border-radius: 30px; font-size: 0.85rem; font-weight: 500; color: #234C6A; }
+/* Scrollbar styling */
+.sidebar::-webkit-scrollbar {
+    width: 5px;
+}
 
-.user-info strong { color: #1B3C53; font-weight: 700; }
+.sidebar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
 
-.dashboard-widgets { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.sidebar::-webkit-scrollbar-thumb {
+    background: rgba(191, 221, 240, 0.3);
+    border-radius: 10px;
+}
 
-.widget { background: #ffffff; padding: 1.1rem; border-radius: 16px; box-shadow: 0 1px 3px rgba(27, 60, 83, 0.05); border: 1px solid rgba(210, 193, 182, 0.3); transition: all 0.2s ease; text-align: left; }
+.sidebar::-webkit-scrollbar-thumb:hover {
+    background: rgba(191, 221, 240, 0.5);
+}
 
-.widget:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(27, 60, 83, 0.08); }
-
-.widget i { margin-bottom: 6px; color: #456882; }
-
-.widget h3 { color: #456882; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.4rem; }
-
-.widget p { font-size: 1.35rem; font-weight: 700; color: #1B3C53; line-height: 1.2; }
-
-.admin-panel, .employee-panel { background: #ffffff; padding: 1.25rem; border-radius: 16px; box-shadow: 0 1px 3px rgba(27, 60, 83, 0.05); border: 1px solid rgba(210, 193, 182, 0.3); margin-top: 1rem; }
-
-.admin-panel h2, .employee-panel h2 { color: #1B3C53; font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; }
-
-.admin-panel p, .employee-panel p { color: #475569; line-height: 1.5; }
-
-.admin-panel a { color: #234C6A; text-decoration: none; font-weight: 500; border-bottom: 1px dashed #456882; }
-
-.admin-panel a:hover { color: #1B3C53; }
-
-.btn-submit, .btn-edit, .btn-delete { display: inline-flex; align-items: center; gap: 6px; }
-
-.btn-submit i, .btn-edit i, .btn-delete i { margin-right: 4px; }
-
-@media (max-width: 1024px) { .main-content { padding: 1.5rem; } }
-
-@media (max-width: 768px) { .main-content { margin-left: 0; padding: 1rem; } .header { flex-direction: column; gap: 0.5rem; align-items: flex-start; } .dashboard-widgets { grid-template-columns: 1fr; } .widget { padding: 1rem; } .widget p { font-size: 1.25rem; } }
