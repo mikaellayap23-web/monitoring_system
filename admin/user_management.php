@@ -8,12 +8,8 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 
 $divisions = $pdo->query("SELECT name FROM divisions ORDER BY name")->fetchAll();
 
+// Fetch departments only (no section/unit)
 $departments = $pdo->query("SELECT name FROM departments ORDER BY name")->fetchAll();
-
-$deptSectionUnitOptions = [];
-foreach ($departments as $dept) {
-    $deptSectionUnitOptions[] = $dept['name'] . ' / / ';
-}
 
 if (isset($_GET['delete'])) {
     $id = $_GET['delete'];
@@ -36,12 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password = $_POST['password'];
         $role = $_POST['role'];
         $division = $_POST['division'];
-        
-        $dept_section_unit = $_POST['dept_section_unit'];
-        $parts = explode(' / ', $dept_section_unit);
-        $department = $parts[0] ?? '';
-        $section = $parts[1] ?? '';
-        $unit = $parts[2] ?? '';
+        $department = $_POST['department'];
         
         $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
         $stmt->execute([$username, $email]);
@@ -49,8 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error_msg = 'Username or email already exists.';
         } else {
             $password_hash = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("INSERT INTO users (username, email, full_name, password_hash, role, division, department, section, unit, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            if ($stmt->execute([$username, $email, $full_name, $password_hash, $role, $division, $department, $section, $unit, $_SESSION['user_id']])) {
+            $stmt = $pdo->prepare("INSERT INTO users (username, email, full_name, password_hash, role, division, department, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            if ($stmt->execute([$username, $email, $full_name, $password_hash, $role, $division, $department, $_SESSION['user_id']])) {
                 $success_msg = 'User added successfully!';
                 header('Location: user_management.php');
                 exit;
@@ -65,26 +56,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $full_name = $_POST['full_name'];
         $role = $_POST['role'];
         $division = $_POST['division'];
+        $department = $_POST['department'];
         
-        $dept_section_unit = $_POST['dept_section_unit'];
-        $parts = explode(' / ', $dept_section_unit);
-        $department = $parts[0] ?? '';
-        $section = $parts[1] ?? '';
-        $unit = $parts[2] ?? '';
-        
-        $stmt = $pdo->prepare("UPDATE users SET full_name = ?, role = ?, division = ?, department = ?, section = ?, unit = ? WHERE id = ?");
-        $stmt->execute([$full_name, $role, $division, $department, $section, $unit, $id]);
+        $stmt = $pdo->prepare("UPDATE users SET full_name = ?, role = ?, division = ?, department = ? WHERE id = ?");
+        $stmt->execute([$full_name, $role, $division, $department, $id]);
         $success_msg = 'User updated successfully!';
         header('Location: user_management.php');
         exit;
     }
 }
 
-$users = $pdo->query("SELECT *, CONCAT(COALESCE(department,''), ' / ', COALESCE(section,''), ' / ', COALESCE(unit,'')) as dept_section_unit FROM users ORDER BY created_at DESC")->fetchAll();
+$users = $pdo->query("SELECT *, COALESCE(department, '') as department FROM users ORDER BY created_at DESC")->fetchAll();
 
 $edit_user = null;
 if (isset($_GET['edit'])) {
-    $stmt = $pdo->prepare("SELECT *, CONCAT(COALESCE(department,''), ' / ', COALESCE(section,''), ' / ', COALESCE(unit,'')) as dept_section_unit FROM users WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT *, COALESCE(department, '') as department FROM users WHERE id = ?");
     $stmt->execute([$_GET['edit']]);
     $edit_user = $stmt->fetch();
 }
@@ -96,200 +82,9 @@ if (isset($_GET['edit'])) {
     <title>User Management - Admin</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="../assets/css/sidebar.css">
+    <link rel="stylesheet" href="../assets/css/base.css">
     <link rel="stylesheet" href="../assets/css/dashboard.css">
-    <style>
-        .btn-open-modal {
-            background: #1B3C53;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 20px;
-        }
-        .btn-open-modal:hover {
-            background: #0f2a3a;
-        }
-        .btn-open-modal i {
-            margin-right: 8px;
-        }
-        
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.5);
-        }
-        
-        .modal-content {
-            background-color: #fff;
-            margin: 5% auto;
-            padding: 0;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 600px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
-            overflow: visible;
-        }
-        
-        .modal-header {
-            padding: 15px 20px;
-            background: #1B3C53;
-            color: white;
-            border-radius: 12px 12px 0 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .modal-header h2 {
-            margin: 0;
-            font-size: 1.2rem;
-        }
-        
-        .modal-header h2 i {
-            margin-right: 8px;
-        }
-        
-        .close-modal {
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .close-modal:hover {
-            color: #ddd;
-        }
-        
-        .modal-body {
-            padding: 25px;
-            padding-bottom: 60px;
-            overflow: visible;
-        }
-        
-        .form-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            position: relative;
-            overflow: visible;
-        }
-        
-        .form-group label {
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-            font-size: 14px;
-        }
-        
-        .form-group label i {
-            margin-right: 8px;
-            color: #1B3C53;
-        }
-        
-        .form-group input,
-        .form-group select {
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-        
-        .form-group select {
-            position: relative;
-        }
-        
-        .btn-submit {
-            background: #1B3C53;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .btn-submit:hover {
-            background: #0f2a3a;
-        }
-        
-        .btn-edit, .btn-delete {
-            padding: 4px 8px;
-            border-radius: 4px;
-            text-decoration: none;
-            font-size: 12px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .btn-edit {
-            background: #456882;
-            color: white;
-        }
-        .btn-delete {
-            background: #dc2626;
-            color: white;
-        }
-        
-        .data-table {
-            overflow-x: auto;
-            margin-top: 20px;
-        }
-        .data-table table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        .data-table th {
-            background: #1B3C53;
-            color: white;
-            padding: 12px;
-            text-align: left;
-        }
-        .data-table td {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-        }
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-        }
-        
-        .readonly-display {
-            background: #f5f5f5;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            color: #666;
-        }
-        
-        small {
-            font-size: 11px;
-            color: #888;
-            margin-top: 5px;
-        }
-    </style>
+    <link rel="stylesheet" href="../assets/css/user_management.css">
 </head>
 <body>
     <div class="app-container">
@@ -301,10 +96,10 @@ if (isset($_GET['edit'])) {
             </div>
             
             <?php if ($success_msg): ?>
-                <div class="alert-success"><i class="fas fa-check-circle"></i> <?= $success_msg ?></div>
+                <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?= $success_msg ?></div>
             <?php endif; ?>
             <?php if ($error_msg): ?>
-                <div class="alert-error"><i class="fas fa-exclamation-triangle"></i> <?= $error_msg ?></div>
+                <div class="alert alert-error"><i class="fas fa-exclamation-triangle"></i> <?= $error_msg ?></div>
             <?php endif; ?>
             
             <button class="btn-open-modal" id="openAddModalBtn">
@@ -361,19 +156,18 @@ if (isset($_GET['edit'])) {
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label><i class="fas fa-sitemap"></i> Department/Section/Unit *</label>
-                                    <select name="dept_section_unit" required>
-                                        <option value="">-- Select Department/Section/Unit --</option>
-                                        <?php foreach ($deptSectionUnitOptions as $option): ?>
-                                            <option value="<?= htmlspecialchars($option) ?>"><?= htmlspecialchars($option) ?></option>
+                                    <label><i class="fas fa-sitemap"></i> Department *</label>
+                                    <select name="department" required>
+                                        <option value="">-- Select Department --</option>
+                                        <?php foreach ($departments as $dept): ?>
+                                            <option value="<?= htmlspecialchars($dept['name']) ?>"><?= htmlspecialchars($dept['name']) ?></option>
                                         <?php endforeach; ?>
                                     </select>
-                                    <small>Format: Department / Section / Unit</small>
                                 </div>
                             </div>
-                            <div class="form-row">
+                            <div class="button-container">
                                 <button type="submit" name="add_user" class="btn-submit"><i class="fas fa-save"></i> Add User</button>
-                                <button type="button" class="btn-submit" onclick="closeAddModal()" style="background: #666;"><i class="fas fa-times"></i> Cancel</button>
+                                <button type="button" class="btn-cancel" onclick="closeAddModal()"><i class="fas fa-times"></i> Cancel</button>
                             </div>
                         </form>
                     </div>
@@ -421,18 +215,18 @@ if (isset($_GET['edit'])) {
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label><i class="fas fa-sitemap"></i> Department/Section/Unit *</label>
-                                    <select name="dept_section_unit" id="edit_dept_section_unit" required>
-                                        <option value="">-- Select Department/Section/Unit --</option>
-                                        <?php foreach ($deptSectionUnitOptions as $option): ?>
-                                            <option value="<?= htmlspecialchars($option) ?>"><?= htmlspecialchars($option) ?></option>
+                                    <label><i class="fas fa-sitemap"></i> Department *</label>
+                                    <select name="department" id="edit_department" required>
+                                        <option value="">-- Select Department --</option>
+                                        <?php foreach ($departments as $dept): ?>
+                                            <option value="<?= htmlspecialchars($dept['name']) ?>"><?= htmlspecialchars($dept['name']) ?></option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
                             </div>
-                            <div class="form-row">
+                            <div class="button-container">
                                 <button type="submit" name="edit_user" class="btn-submit"><i class="fas fa-save"></i> Update User</button>
-                                <button type="button" class="btn-submit" onclick="closeEditModal()" style="background: #666;"><i class="fas fa-times"></i> Cancel</button>
+                                <button type="button" class="btn-cancel" onclick="closeEditModal()"><i class="fas fa-times"></i> Cancel</button>
                             </div>
                         </form>
                     </div>
@@ -449,19 +243,30 @@ if (isset($_GET['edit'])) {
                             <th>Email</th>
                             <th>Role</th>
                             <th>Division</th>
-                            <th>Department/Section/Unit</th>
+                            <th>Department</th>
                             <th>Actions</th>
-                        </tr>
-                    </thead>
+                        </thead>
                     <tbody>
                         <?php foreach ($users as $user): ?>
                             <tr>
-                                <td><?= $user['id'] ?></td>
-                                <td><?= htmlspecialchars($user['full_name'] ?? '') ?></td>
-                                <td><?= htmlspecialchars($user['email']) ?></td>
-                                <td><?= $user['role'] ?></td>
-                                <td><?= htmlspecialchars($user['division'] ?? '') ?></td>
-                                <td><?= htmlspecialchars($user['dept_section_unit'] ?? '') ?></td>
+                                <td><?= $user['id'] ?></div>
+                                <td><?= htmlspecialchars($user['full_name'] ?? '') ?></div>
+                                <td><?= htmlspecialchars($user['email']) ?></div>
+                                <td>
+                                    <?php
+                                    $roleClass = '';
+                                    if ($user['role'] == 'admin') {
+                                        $roleClass = 'role-admin';
+                                    } elseif ($user['role'] == 'unit_head') {
+                                        $roleClass = 'role-unit_head';
+                                    } else {
+                                        $roleClass = 'role-employee';
+                                    }
+                                    ?>
+                                    <span class="role-badge <?= $roleClass ?>"><?= ucfirst(str_replace('_', ' ', $user['role'])) ?></span>
+                                 </div>
+                                <td><?= htmlspecialchars($user['division'] ?? '') ?></div>
+                                <td><?= htmlspecialchars($user['department'] ?? '') ?></div>
                                 <td>
                                     <button class="btn-edit" onclick='openEditModal(<?= json_encode($user) ?>)'>
                                         <i class="fas fa-edit"></i> Edit
@@ -469,7 +274,7 @@ if (isset($_GET['edit'])) {
                                     <?php if ($user['id'] != $_SESSION['user_id']): ?>
                                         <a href="?delete=<?= $user['id'] ?>" class="btn-delete" onclick="return confirm('Delete this user?')"><i class="fas fa-trash-alt"></i> Delete</a>
                                     <?php endif; ?>
-                                </td>
+                                 </div>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -485,10 +290,12 @@ if (isset($_GET['edit'])) {
         
         function openAddModal() {
             addModal.style.display = 'block';
+            document.body.style.overflow = 'hidden';
         }
         
         function closeAddModal() {
             addModal.style.display = 'none';
+            document.body.style.overflow = 'auto';
             document.getElementById('addUserModal').querySelector('form').reset();
         }
         
@@ -498,21 +305,15 @@ if (isset($_GET['edit'])) {
             document.getElementById('edit_full_name').value = user.full_name || '';
             document.getElementById('edit_role').value = user.role;
             document.getElementById('edit_division').value = user.division || '';
-            
-            var deptSectionUnit = (user.department || '') + ' / ' + (user.section || '') + ' / ' + (user.unit || '');
-            var select = document.getElementById('edit_dept_section_unit');
-            for (var i = 0; i < select.options.length; i++) {
-                if (select.options[i].value === deptSectionUnit) {
-                    select.selectedIndex = i;
-                    break;
-                }
-            }
+            document.getElementById('edit_department').value = user.department || '';
             
             editModal.style.display = 'block';
+            document.body.style.overflow = 'hidden';
         }
         
         function closeEditModal() {
             editModal.style.display = 'none';
+            document.body.style.overflow = 'auto';
         }
         
         if (openAddBtn) {

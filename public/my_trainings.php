@@ -9,10 +9,15 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $user_role = $_SESSION['role'] ?? '';
 
-// Get current user's info
-$userStmt = $pdo->prepare("SELECT full_name, username, division, department, section, unit FROM users WHERE id = ?");
+// Get current user's info - REMOVED section and unit
+$userStmt = $pdo->prepare("SELECT full_name, username, division, department FROM users WHERE id = ?");
 $userStmt->execute([$user_id]);
-$current_user = $userStmt->fetch();
+$current_user = $userStmt->fetch() ?: [];
+
+if (empty($current_user)) {
+    header('Location: login.php');
+    exit;
+}
 
 if (isset($_GET['delete'])) {
     $id = $_GET['delete'];
@@ -35,12 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
     $employee_name = $_POST['employee_name'];
     $training_type = $_POST['training_type'];
     $division = $_POST['division'];
-    
-    // Split the combined department/section value
-    $department_section = $_POST['department_section'];
-    list($department, $section) = explode('||', $department_section);
-    
-    $unit = $_POST['unit'];
+    $department = trim($_POST['department'] ?? '');
     $title_of_activity = $_POST['title_of_activity'];
     $date_from = $_POST['date_from'];
     $date_to = $_POST['date_to'];
@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
         $ptr_deadline = $_POST['ptr_deadline'];
         
         if (isset($_FILES['ptr_file']) && $_FILES['ptr_file']['error'] === 0) {
-            $upload_dir = 'uploads/ptr_reports/';
+            $upload_dir = '../public/uploads/ptr_reports/';
             if (!file_exists($upload_dir)) {
                 mkdir($upload_dir, 0777, true);
             }
@@ -72,10 +72,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_training'])) {
         }
     }
     
-    $stmt = $pdo->prepare("INSERT INTO trainings (user_id, employee_name, training_type, division, department, section, unit, title_of_activity, date_from, date_to, venue, hospital_order, date_filed, ob_ot, ptr_deadline, ptr_file, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt = $pdo->prepare("INSERT INTO trainings (user_id, employee_name, training_type, division, department, title_of_activity, date_from, date_to, venue, hospital_order, date_filed, ob_ot, ptr_deadline, ptr_file, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     
-    if ($stmt->execute([$user_id, $employee_name, $training_type, $division, $department, $section, $unit, $title_of_activity, $date_from, $date_to, $venue, $hospital_order, $date_filed, $ob_ot, $ptr_deadline, $ptr_file, $remarks])) {
+    if ($stmt->execute([$user_id, $employee_name, $training_type, $division, $department, $title_of_activity, $date_from, $date_to, $venue, $hospital_order, $date_filed, $ob_ot, $ptr_deadline, $ptr_file, $remarks])) {
         $success_msg = 'Training added successfully!';
+        header('Location: my_trainings.php?msg=added');
+        exit;
     } else {
         $error_msg = 'Failed to add training.';
     }
@@ -104,12 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_edit_training'])
     $employee_name = $_POST['employee_name'];
     $training_type = $_POST['training_type'];
     $division = $_POST['division'];
-    
-    // Split the combined department/section value
-    $department_section = $_POST['department_section'];
-    list($department, $section) = explode('||', $department_section);
-    
-    $unit = $_POST['unit'];
+    $department = trim($_POST['department'] ?? '');
     $title_of_activity = $_POST['title_of_activity'];
     $date_from = $_POST['date_from'];
     $date_to = $_POST['date_to'];
@@ -134,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_edit_training'])
         $ptr_deadline = $_POST['ptr_deadline'];
         
         if (isset($_FILES['ptr_file']) && $_FILES['ptr_file']['error'] === 0) {
-            $upload_dir = 'uploads/ptr_reports/';
+            $upload_dir = '../public/uploads/ptr_reports/';
             if (!file_exists($upload_dir)) {
                 mkdir($upload_dir, 0777, true);
             }
@@ -146,9 +143,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_edit_training'])
         }
     }
     
-    $stmt = $pdo->prepare("UPDATE trainings SET user_id=?, employee_name=?, training_type=?, division=?, department=?, section=?, unit=?, title_of_activity=?, date_from=?, date_to=?, venue=?, hospital_order=?, date_filed=?, ob_ot=?, ptr_deadline=?, ptr_file=?, remarks=? WHERE id=? AND user_id=?");
+    $stmt = $pdo->prepare("UPDATE trainings SET user_id=?, employee_name=?, training_type=?, division=?, department=?, title_of_activity=?, date_from=?, date_to=?, venue=?, hospital_order=?, date_filed=?, ob_ot=?, ptr_deadline=?, ptr_file=?, remarks=? WHERE id=? AND user_id=?");
     
-    if ($stmt->execute([$user_id, $employee_name, $training_type, $division, $department, $section, $unit, $title_of_activity, $date_from, $date_to, $venue, $hospital_order, $date_filed, $ob_ot, $ptr_deadline, $ptr_file, $remarks, $id, $user_id])) {
+    if ($stmt->execute([$user_id, $employee_name, $training_type, $division, $department, $title_of_activity, $date_from, $date_to, $venue, $hospital_order, $date_filed, $ob_ot, $ptr_deadline, $ptr_file, $remarks, $id, $user_id])) {
         header('Content-Type: application/json');
         echo json_encode(['success' => true, 'message' => 'Training updated successfully!']);
     } else {
@@ -170,8 +167,7 @@ $search = $_GET['search'] ?? '';
 $query = "SELECT t.*, u.username FROM trainings t LEFT JOIN users u ON t.user_id = u.id WHERE t.user_id = ?";
 $params = [$user_id];
 if ($search) {
-    $query .= " AND (t.employee_name LIKE ? OR t.title_of_activity LIKE ?)";
-    $params[] = "%$search%";
+    $query .= " AND (t.title_of_activity LIKE ?)";
     $params[] = "%$search%";
 }
 $query .= " ORDER BY t.created_at DESC";
@@ -179,11 +175,17 @@ $stmt = $pdo->prepare($query);
 $stmt->execute($params);
 $trainings = $stmt->fetchAll();
 
-$users = $pdo->query("SELECT id, username, full_name FROM users ORDER BY username")->fetchAll();
+// Get department options
+$deptStmt = $pdo->query("SELECT DISTINCT department FROM users WHERE department IS NOT NULL ORDER BY department");
+$departments = $deptStmt->fetchAll();
 
-// Get department/section options
-$deptSectionStmt = $pdo->query("SELECT DISTINCT department, section FROM users WHERE department IS NOT NULL ORDER BY department, section");
-$deptSections = $deptSectionStmt->fetchAll();
+if (isset($_GET['msg'])) {
+    if ($_GET['msg'] === 'added') {
+        $success_msg = 'Training added successfully!';
+    } elseif ($_GET['msg'] === 'deleted') {
+        $success_msg = 'Training deleted successfully!';
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -191,330 +193,145 @@ $deptSections = $deptSectionStmt->fetchAll();
     <meta charset="UTF-8">
     <title>My Trainings</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="../assets/css/training_list.css">
+    <link rel="stylesheet" href="../assets/css/base.css">
     <link rel="stylesheet" href="../assets/css/sidebar.css">
+    <link rel="stylesheet" href="../assets/css/dashboard.css">
+    <link rel="stylesheet" href="../assets/css/training_list.css">
     <style>
-        /* Modal Styles */
         .btn-open-modal {
-            background: #1B3C53;
+            background: linear-gradient(135deg, #0245A3, #355872);
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
+            padding: 12px 24px;
+            border-radius: 10px;
             cursor: pointer;
             font-size: 14px;
             font-weight: 600;
-            margin-bottom: 20px;
-            transition: background 0.3s;
+            margin-bottom: 25px;
+            transition: all 0.3s;
         }
-        
         .btn-open-modal:hover {
-            background: #0f2a3a;
+            background: linear-gradient(135deg, #355872, #0245A3);
+            transform: translateY(-2px);
         }
-        
         .btn-open-modal i {
             margin-right: 8px;
         }
-        
         .btn-edit-modal {
-            background: #456882;
+            background: #7AAACE;
             color: white;
             border: none;
-            padding: 5px 10px;
-            border-radius: 4px;
+            padding: 6px 12px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 12px;
-            transition: background 0.3s;
+            transition: all 0.3s;
         }
-        
         .btn-edit-modal:hover {
-            background: #2c4e6e;
+            background: #8FBAF3;
+            transform: translateY(-1px);
         }
-        
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.5);
-            animation: fadeIn 0.3s;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        .modal-content {
-            background-color: #fff;
-            margin: 2% auto;
-            padding: 0;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 1000px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
-            animation: slideDown 0.3s;
-            overflow: visible;
-        }
-        
-        @keyframes slideDown {
-            from {
-                transform: translateY(-50px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-        
-        .modal-header {
-            padding: 15px 20px;
-            background: #1B3C53;
-            color: white;
-            border-radius: 12px 12px 0 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .modal-header h2 {
-            margin: 0;
-            font-size: 1.2rem;
-        }
-        
-        .modal-header h2 i {
-            margin-right: 10px;
-        }
-        
-        .close-modal {
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.3s;
-        }
-        
-        .close-modal:hover {
-            color: #ddd;
-            transform: scale(1.1);
-        }
-        
-        .modal-body {
-            padding: 25px;
-            overflow: visible;
-        }
-        
-        .modal-body .btn-submit {
-            background: #1B3C53;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: background 0.3s;
-            width: auto;
-            display: inline-block;
-        }
-        
-        .modal-body .btn-submit:hover {
-            background: #0f2a3a;
-        }
-        
-        .button-container {
-            text-align: left;
-            margin-top: 10px;
-            display: flex;
-            gap: 10px;
-        }
-        
-        .btn-cancel-modal {
-            background: #6c757d;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: background 0.3s;
-        }
-        
-        .btn-cancel-modal:hover {
-            background: #5a6268;
-        }
-        
-        /* Form styling with reduced padding */
-        .form-row {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-        
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .form-group label {
-            margin-bottom: 6px;
-            font-weight: 600;
-            color: #333;
-            font-size: 13px;
-        }
-        
-        .form-group label i {
-            margin-right: 6px;
-            color: #1B3C53;
-        }
-        
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-            padding: 6px 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 13px;
-            transition: border-color 0.3s;
-        }
-        
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-            outline: none;
-            border-color: #1B3C53;
-            box-shadow: 0 0 0 2px rgba(27, 60, 83, 0.1);
-        }
-        
-        .external-fields {
-            display: none;
-            background: #f8f9fa;
-            padding: 12px;
-            border-radius: 8px;
-            margin-top: 10px;
-        }
-        
-        .loading-spinner {
-            text-align: center;
-            padding: 40px;
-            display: none;
-        }
-        
-        .loading-spinner i {
-            font-size: 40px;
-            color: #1B3C53;
-        }
-        
-        .edit-form-container {
-            display: block;
-        }
-        
-        .edit-form-container.hide {
-            display: none;
-        }
-        
-        .alert-success-modal, .alert-error-modal {
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-            display: none;
-        }
-        
-        .alert-success-modal {
-            background: #d4edda;
-            color: #155724;
-            border-left: 4px solid #28a745;
-        }
-        
-        .alert-error-modal {
-            background: #f8d7da;
-            color: #721c24;
-            border-left: 4px solid #dc3545;
-        }
-        
-        .current-ptr-file {
-            font-size: 11px;
-            margin-top: 5px;
-        }
-        
-        .current-ptr-file a {
-            color: #1B3C53;
-        }
-        
-        .form-group textarea {
-            padding: 6px 10px;
-        }
-        
-        .search-bar {
-            margin: 20px 0;
-        }
-        
-        .search-bar input {
-            padding: 8px;
-            width: 300px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-        }
-        
-        .data-table {
-            background: white;
-            border-radius: 12px;
-            border: 1px solid rgba(210,193,182,0.3);
-            overflow-x: auto;
-        }
-        
-        .data-table table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        .data-table th {
-            background: #1B3C53;
-            color: white;
-            padding: 12px;
-            text-align: left;
-            font-size: 12px;
-        }
-        
-        .data-table td {
-            padding: 10px 12px;
-            border-bottom: 1px solid #eee;
-            font-size: 12px;
-        }
-        
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-        }
-        
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-        }
-        
         .btn-delete {
-            background: #dc2626;
+            background: #ef4444;
             color: white;
-            padding: 5px 10px;
-            border-radius: 4px;
+            padding: 6px 12px;
+            border-radius: 6px;
             text-decoration: none;
             font-size: 12px;
             display: inline-flex;
             align-items: center;
             gap: 4px;
+            transition: all 0.3s;
+        }
+        .btn-delete:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+        .btn-cancel-modal {
+            background: #7AAACE;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .btn-cancel-modal:hover {
+            background: #8FBAF3;
+            transform: translateY(-1px);
+        }
+        .btn-submit {
+            background: linear-gradient(135deg, #0245A3, #355872);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .btn-submit:hover {
+            background: linear-gradient(135deg, #355872, #0245A3);
+            transform: translateY(-1px);
+        }
+        .modal-content {
+            background-color: #F7F8F0;
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #0245A3, #355872);
+        }
+        .external-fields {
+            background: #F2FCFC;
+            border-radius: 10px;
+        }
+        .search-bar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .search-bar input {
+            padding: 10px 14px;
+            width: 300px;
+            border: 1.5px solid #BDF1F6;
+            border-radius: 10px;
+            font-size: 13px;
+        }
+        .search-bar input:focus {
+            outline: none;
+            border-color: #8FBAF3;
+            box-shadow: 0 0 0 2px rgba(143, 186, 243, 0.2);
+        }
+        .search-bar a {
+            color: #7AAACE;
+            text-decoration: none;
+        }
+        .search-bar a:hover {
+            color: #8FBAF3;
+            text-decoration: underline;
+        }
+        .data-table {
+            background: #F7F8F0;
+        }
+        .data-table th {
+            background: linear-gradient(135deg, #0245A3, #355872);
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            border: 1.5px solid #BDF1F6;
+            border-radius: 8px;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            border-color: #8FBAF3;
+            box-shadow: 0 0 0 2px rgba(143, 186, 243, 0.2);
+        }
+        .button-container {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -528,10 +345,10 @@ $deptSections = $deptSectionStmt->fetchAll();
             </div>
             
             <?php if ($success_msg): ?>
-                <div class="alert-success"><i class="fas fa-check-circle"></i> <?= $success_msg ?></div>
+                <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?= $success_msg ?></div>
             <?php endif; ?>
             <?php if ($error_msg): ?>
-                <div class="alert-error"><i class="fas fa-exclamation-triangle"></i> <?= $error_msg ?></div>
+                <div class="alert alert-error"><i class="fas fa-exclamation-triangle"></i> <?= $error_msg ?></div>
             <?php endif; ?>
             
             <!-- Add Training Button -->
@@ -548,13 +365,9 @@ $deptSections = $deptSectionStmt->fetchAll();
                     </div>
                     <div class="modal-body">
                         <form method="post" enctype="multipart/form-data" id="addTrainingForm">
+                            <input type="hidden" name="user_id" value="<?= $user_id ?>">
+                            
                             <div class="form-row">
-                                <div class="form-group">
-                                    <label><i class="fas fa-user"></i> Employee *</label>
-                                    <select name="user_id" required>
-                                        <option value="<?= $user_id ?>"><?= htmlspecialchars($current_user['full_name'] ?: $current_user['username']) ?></option>
-                                    </select>
-                                </div>
                                 <div class="form-group">
                                     <label><i class="fas fa-user-tag"></i> Employee Name *</label>
                                     <input type="text" name="employee_name" value="<?= htmlspecialchars($current_user['full_name'] ?: $current_user['username']) ?>" required>
@@ -581,19 +394,17 @@ $deptSections = $deptSectionStmt->fetchAll();
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label><i class="fas fa-building"></i> Department/Section *</label>
-                                    <select name="department_section" id="department_section" required>
-                                        <option value="">Select Department/Section</option>
-                                        <?php foreach ($deptSections as $ds): ?>
-                                            <option value="<?= htmlspecialchars($ds['department'] . '||' . $ds['section']) ?>">
-                                                <?= htmlspecialchars($ds['department'] . ' / ' . $ds['section']) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label><i class="fas fa-users"></i> Unit</label>
-                                    <input type="text" name="unit">
+                                    <label><i class="fas fa-building"></i> Department *</label>
+                                    <?php if (!empty($departments)): ?>
+                                        <select name="department" required>
+                                            <option value="">Select Department</option>
+                                            <?php foreach ($departments as $dept): ?>
+                                                <option value="<?= htmlspecialchars($dept['department']) ?>"><?= htmlspecialchars($dept['department']) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    <?php else: ?>
+                                        <input type="text" name="department" required placeholder="Department">
+                                    <?php endif; ?>
                                 </div>
                             </div>
                             
@@ -699,7 +510,7 @@ $deptSections = $deptSectionStmt->fetchAll();
                                 
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label><i class="fas fa-user"></i> Employee *</label>
+                                        <label><i class="fas fa-user"></i> Employee Name *</label>
                                         <input type="text" name="employee_name" id="edit_employee_name" required>
                                     </div>
                                     <div class="form-group">
@@ -724,19 +535,13 @@ $deptSections = $deptSectionStmt->fetchAll();
                                         </select>
                                     </div>
                                     <div class="form-group">
-                                        <label><i class="fas fa-building"></i> Department/Section *</label>
-                                        <select name="department_section" id="edit_department_section" required>
-                                            <option value="">Select Department/Section</option>
-                                            <?php foreach ($deptSections as $ds): ?>
-                                                <option value="<?= htmlspecialchars($ds['department'] . '||' . $ds['section']) ?>">
-                                                    <?= htmlspecialchars($ds['department'] . ' / ' . $ds['section']) ?>
-                                                </option>
+                                        <label><i class="fas fa-building"></i> Department *</label>
+                                        <select name="department" id="edit_department" required>
+                                            <option value="">Select Department</option>
+                                            <?php foreach ($departments as $dept): ?>
+                                                <option value="<?= htmlspecialchars($dept['department']) ?>"><?= htmlspecialchars($dept['department']) ?></option>
                                             <?php endforeach; ?>
                                         </select>
-                                    </div>
-                                    <div class="form-group">
-                                        <label><i class="fas fa-users"></i> Unit</label>
-                                        <input type="text" name="unit" id="edit_unit">
                                     </div>
                                 </div>
                                 
@@ -821,7 +626,7 @@ $deptSections = $deptSectionStmt->fetchAll();
             
             <div class="search-bar">
                 <form method="get">
-                    <input type="text" name="search" placeholder="Search by employee or training title..." value="<?= htmlspecialchars($search) ?>">
+                    <input type="text" name="search" placeholder="Search by training title..." value="<?= htmlspecialchars($search) ?>">
                     <button type="submit" class="btn-submit"><i class="fas fa-search"></i> Search</button>
                     <?php if ($search): ?>
                         <a href="my_trainings.php"><i class="fas fa-times"></i> Clear</a>
@@ -830,22 +635,22 @@ $deptSections = $deptSectionStmt->fetchAll();
             </div>
             
             <div class="data-table">
+                <h3><i class="fas fa-calendar-alt"></i> My Training Records</h3>
                 <table>
                     <thead>
                         <tr>
                             <th>ID</th>
-                            <th>Employee</th>
-                            <th>Type</th>
-                            <th>Title</th>
+                            <th>Training Type</th>
+                            <th>Title of Activity</th>
                             <th>Division</th>
-                            <th>Dept/Section</th>
-                            <th>Date</th>
+                            <th>Department</th>
+                            <th>Date From</th>
+                            <th>Date To</th>
                             <th>Venue</th>
                             <th>OB/OT</th>
                             <th>PTR Status</th>
                             <th>Actions</th>
-                        </tr>
-                    </thead>
+                         </thead>
                     <tbody>
                         <?php if (empty($trainings)): ?>
                             <tr>
@@ -855,29 +660,33 @@ $deptSections = $deptSectionStmt->fetchAll();
                         <?php foreach ($trainings as $training): ?>
                             <tr>
                                 <td><?= $training['id'] ?></td>
-                                <td><?= htmlspecialchars($training['employee_name']) ?></td>
                                 <td><?= $training['training_type'] ?></td>
                                 <td><?= htmlspecialchars($training['title_of_activity']) ?></td>
                                 <td><?= htmlspecialchars($training['division']) ?></td>
-                                <td><?= htmlspecialchars($training['department'] . ' / ' . $training['section']) ?></td>
-                                <td><?= $training['date_from'] ?> to <?= $training['date_to'] ?></td>
+                                <td><?= htmlspecialchars($training['department'] ?? '-') ?></td>
+                                <td><?= date('M d, Y', strtotime($training['date_from'])) ?></td>
+                                <td><?= date('M d, Y', strtotime($training['date_to'])) ?></td>
                                 <td><?= $training['venue'] ?></td>
                                 <td><?= $training['ob_ot'] ?: '-' ?></td>
                                 <td>
                                     <?php if ($training['training_type'] === 'External'): ?>
-                                        <form method="post" style="display:inline">
-                                            <input type="hidden" name="training_id" value="<?= $training['id'] ?>">
-                                            <input type="checkbox" name="ptr_submitted" <?= $training['ptr_submitted'] ? 'checked' : '' ?> onchange="this.form.submit()">
-                                            <input type="hidden" name="update_ptr" value="1">
-                                            <label><i class="fas fa-check"></i> Submitted</label>
-                                        </form>
-                                        <?php if ($training['ptr_file']): ?>
-                                            <br><a href="<?= $training['ptr_file'] ?>" target="_blank"><i class="fas fa-file-pdf"></i> View File</a>
-                                        <?php endif; ?>
+                                        <div class="ptr-status-container">
+                                            <form method="post" class="ptr-form">
+                                                <input type="hidden" name="training_id" value="<?= $training['id'] ?>">
+                                                <label class="ptr-checkbox">
+                                                    <input type="checkbox" name="ptr_submitted" <?= $training['ptr_submitted'] ? 'checked' : '' ?> onchange="this.form.submit()">
+                                                    <span>Submitted</span>
+                                                </label>
+                                                <input type="hidden" name="update_ptr" value="1">
+                                            </form>
+                                            <?php if ($training['ptr_file']): ?>
+                                                <a href="../public/<?= $training['ptr_file'] ?>" class="ptr-file-link" target="_blank"><i class="fas fa-file-pdf"></i> View File</a>
+                                            <?php endif; ?>
+                                        </div>
                                     <?php else: ?>
-                                        N/A
+                                        <span class="ptr-badge ptr-na">N/A</span>
                                     <?php endif; ?>
-                                </td>
+                                 </div>
                                 <td>
                                     <button onclick="openEditModal(<?= $training['id'] ?>)" class="btn-edit-modal">
                                         <i class="fas fa-edit"></i> Edit
@@ -885,7 +694,7 @@ $deptSections = $deptSectionStmt->fetchAll();
                                     <a href="?delete=<?= $training['id'] ?>" class="btn-delete" onclick="return confirm('Delete this training?')">
                                         <i class="fas fa-trash-alt"></i> Delete
                                     </a>
-                                </td>
+                                 </div>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -895,21 +704,30 @@ $deptSections = $deptSectionStmt->fetchAll();
     </div>
     
     <script>
-        // Add Modal Functions
         function openAddModal() {
-            document.getElementById('addModal').style.display = 'block';
-            document.body.style.overflow = 'hidden';
-            toggleAddExternalFields();
+            var modal = document.getElementById('addModal');
+            if (modal) {
+                modal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+                toggleAddExternalFields();
+            } else {
+                console.error('Add modal not found');
+            }
         }
         
         function closeAddModal() {
-            document.getElementById('addModal').style.display = 'none';
-            document.body.style.overflow = 'auto';
-            document.getElementById('addTrainingForm').reset();
+            var modal = document.getElementById('addModal');
+            if (modal) {
+                modal.style.display = 'none';
+                document.body.style.overflow = 'auto';
+                document.getElementById('addTrainingForm').reset();
+            }
         }
         
         function toggleAddExternalFields() {
-            var type = document.getElementById('add_training_type').value;
+            var typeSelect = document.getElementById('add_training_type');
+            if (!typeSelect) return;
+            var type = typeSelect.value;
             var externalFields = document.getElementById('add_external_fields');
             if (type === 'External') {
                 externalFields.style.display = 'block';
@@ -924,7 +742,6 @@ $deptSections = $deptSectionStmt->fetchAll();
             }
         }
         
-        // Edit Modal Functions
         function openEditModal(id) {
             var modal = document.getElementById('editModal');
             var loading = document.getElementById('loadingSpinner');
@@ -965,10 +782,7 @@ $deptSections = $deptSectionStmt->fetchAll();
             document.getElementById('edit_employee_name').value = training.employee_name;
             document.getElementById('edit_training_type').value = training.training_type;
             document.getElementById('edit_division').value = training.division;
-            
-            var deptSection = training.department + '||' + training.section;
-            document.getElementById('edit_department_section').value = deptSection;
-            document.getElementById('edit_unit').value = training.unit || '';
+            document.getElementById('edit_department').value = training.department || '';
             document.getElementById('edit_title_of_activity').value = training.title_of_activity;
             document.getElementById('edit_date_from').value = training.date_from;
             document.getElementById('edit_date_to').value = training.date_to;
@@ -986,7 +800,7 @@ $deptSections = $deptSectionStmt->fetchAll();
             
             var ptrFileDiv = document.getElementById('currentPtrFile');
             if (training.ptr_file) {
-                ptrFileDiv.innerHTML = '<i class="fas fa-file-pdf"></i> Current: <a href="' + training.ptr_file + '" target="_blank">View PTR File</a>';
+                ptrFileDiv.innerHTML = '<i class="fas fa-file-pdf"></i> Current: <a href="../public/' + training.ptr_file + '" target="_blank">View PTR File</a>';
             } else {
                 ptrFileDiv.innerHTML = '';
             }

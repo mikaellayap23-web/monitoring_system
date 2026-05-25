@@ -10,24 +10,26 @@ if (isset($_SESSION['user_id'])) {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username'] ?? '');
+    $email_or_fullname = trim($_POST['email_or_fullname'] ?? '');
     $password = $_POST['password'] ?? '';
     
-    if (empty($username) || empty($password)) {
-        $error = 'Please enter username/email and password.';
+    if (empty($email_or_fullname) || empty($password)) {
+        $error = 'Please enter email or full name and password.';
     } else {
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ? OR email = ?");
-        $stmt->execute([$username, $username]);
+        // Search by email OR full_name
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? OR full_name = ?");
+        $stmt->execute([$email_or_fullname, $email_or_fullname]);
         $user = $stmt->fetch();
         
         if ($user && password_verify($password, $user['password_hash'])) {
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['username'] = $user['username'];
+            $_SESSION['fullname'] = $user['full_name'];
             $_SESSION['role'] = $user['role'];
             header('Location: dashboard.php');
             exit;
         } else {
-            $error = 'Invalid credentials.';
+            $error = 'Invalid email/full name or password.';
         }
     }
 }
@@ -46,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="logo-wrapper">
             <img src="Uploads/Images/armmc-logo.png" alt="RMMC Logo" class="login-logo">
             <div class="hospital-name">
-                <span class="hospital-title">Monitoring System</span>
+                <span class="hospital-title">RMMC Monitoring System</span>
             </div>
         </div>
 
@@ -58,8 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         <form method="post" id="loginForm">
             <div class="input-group">
-                <i class="fas fa-user input-icon"></i>
-                <input type="text" name="username" placeholder="Username or Email" required autofocus>
+                <i class="fas fa-envelope input-icon"></i>
+                <input type="text" name="email_or_fullname" placeholder="Email or Full Name" required autofocus>
             </div>
             
             <div class="input-group">
@@ -78,11 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const passwordField = document.getElementById('password');
 
         togglePassword.addEventListener('click', function() {
-            // Toggle the type attribute
             const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
             passwordField.setAttribute('type', type);
-            
-            // Toggle the eye icon
             this.classList.toggle('fa-eye');
             this.classList.toggle('fa-eye-slash');
         });

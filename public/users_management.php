@@ -10,8 +10,8 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $user_role = $_SESSION['role'] ?? '';
 
-// Get Unit Head's department, section, unit info
-$userStmt = $pdo->prepare("SELECT division, department, section, unit, full_name, username FROM users WHERE id = ?");
+// Get Unit Head's division and department info (section and unit removed)
+$userStmt = $pdo->prepare("SELECT division, department, full_name, username FROM users WHERE id = ?");
 $userStmt->execute([$user_id]);
 $current_user = $userStmt->fetch();
 
@@ -21,7 +21,7 @@ if ($user_role !== 'unit_head') {
     exit;
 }
 
-// Handle delete - only allow deleting staff under same unit
+// Handle delete - only allow deleting staff under same unit (now using division and department only)
 if (isset($_GET['delete'])) {
     $id = $_GET['delete'];
     // Verify this user belongs to unit head's team and is not a unit head or admin
@@ -30,11 +30,9 @@ if (isset($_GET['delete'])) {
         WHERE id = ? 
         AND division = ?
         AND department = ? 
-        AND section = ? 
-        AND unit = ?
         AND role = 'employee'
     ");
-    $checkStmt->execute([$id, $current_user['division'], $current_user['department'], $current_user['section'], $current_user['unit']]);
+    $checkStmt->execute([$id, $current_user['division'], $current_user['department']]);
     if ($checkStmt->fetch()) {
         $stmt = $pdo->prepare("DELETE FROM users WHERE id = ?");
         $stmt->execute([$id]);
@@ -58,11 +56,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
     // Generate username from email (before @ symbol)
     $username = explode('@', $email)[0];
     
-    // Force to unit head's division, department, section, unit
+    // Force to unit head's division and department
     $division = $current_user['division'];
     $department = $current_user['department'];
-    $section = $current_user['section'];
-    $unit = $current_user['unit'];
     
     // Force role to employee for unit head
     $role = 'employee';
@@ -74,8 +70,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_user'])) {
         $error_msg = 'Email already exists.';
     } else {
         $password_hash = password_hash($password, PASSWORD_DEFAULT);
-        $stmt = $pdo->prepare("INSERT INTO users (username, email, full_name, password_hash, role, division, department, section, unit, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt->execute([$username, $email, $full_name, $password_hash, $role, $division, $department, $section, $unit, $_SESSION['user_id']])) {
+        $stmt = $pdo->prepare("INSERT INTO users (username, email, full_name, password_hash, role, division, department, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt->execute([$username, $email, $full_name, $password_hash, $role, $division, $department, $_SESSION['user_id']])) {
             $success_msg = 'User added successfully!';
         } else {
             $error_msg = 'Failed to add user.';
@@ -93,11 +89,9 @@ if (isset($_GET['ajax_get_user'])) {
         WHERE id = ? 
         AND division = ?
         AND department = ? 
-        AND section = ? 
-        AND unit = ?
         AND role = 'employee'
     ");
-    $stmt->execute([$id, $current_user['division'], $current_user['department'], $current_user['section'], $current_user['unit']]);
+    $stmt->execute([$id, $current_user['division'], $current_user['department']]);
     $user = $stmt->fetch();
     
     if ($user) {
@@ -122,11 +116,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_edit_user'])) {
         WHERE id = ? 
         AND division = ?
         AND department = ? 
-        AND section = ? 
-        AND unit = ?
         AND role = 'employee'
     ");
-    $checkStmt->execute([$id, $current_user['division'], $current_user['department'], $current_user['section'], $current_user['unit']]);
+    $checkStmt->execute([$id, $current_user['division'], $current_user['department']]);
     
     if ($checkStmt->fetch()) {
         // Check if email already exists for another user
@@ -167,17 +159,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_edit_user'])) {
     exit;
 }
 
-// Get users under this Unit Head (same division, department, section, unit, and role = employee)
+// Get users under this Unit Head (same division, department, and role = employee)
 $usersStmt = $pdo->prepare("
     SELECT * FROM users 
     WHERE division = ?
     AND department = ? 
-    AND section = ? 
-    AND unit = ?
     AND role = 'employee'
     ORDER BY created_at DESC
 ");
-$usersStmt->execute([$current_user['division'], $current_user['department'], $current_user['section'], $current_user['unit']]);
+$usersStmt->execute([$current_user['division'], $current_user['department']]);
 $users = $usersStmt->fetchAll();
 
 // Get success/error message from URL
@@ -196,296 +186,120 @@ if (isset($_GET['msg'])) {
     <meta charset="UTF-8">
     <title>User Management - Unit Head</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="../assets/css/user_management.css">
+    <link rel="stylesheet" href="../assets/css/base.css">
     <link rel="stylesheet" href="../assets/css/sidebar.css">
+    <link rel="stylesheet" href="../assets/css/dashboard.css">
+    <link rel="stylesheet" href="../assets/css/user_management.css">
     <style>
         .info-box {
-            background: #e8f4fd;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            border-left: 4px solid #1B3C53;
+            background: var(--secondary);
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            border-left: 4px solid var(--primary);
+            color: var(--navy);
         }
         .info-box i {
-            color: #1B3C53;
+            color: var(--primary);
             margin-right: 10px;
         }
-        .readonly-field {
-            background-color: #f5f5f5;
-            cursor: not-allowed;
+        .readonly-display {
+            background-color: var(--bg-light);
+            padding: 12px 16px;
+            border: 1.5px solid var(--secondary);
+            border-radius: 10px;
+            color: var(--navy);
+            font-size: 14px;
         }
-        
-        /* Modal Styles */
         .btn-open-modal {
-            background: #1B3C53;
+            background: linear-gradient(135deg, var(--primary), var(--navy));
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
+            padding: 12px 24px;
+            border-radius: 10px;
             cursor: pointer;
             font-size: 14px;
             font-weight: 600;
-            margin-bottom: 20px;
-            transition: background 0.3s;
+            margin-bottom: 25px;
+            transition: all 0.3s;
+            box-shadow: var(--shadow-sm);
         }
-        
         .btn-open-modal:hover {
-            background: #0f2a3a;
+            background: linear-gradient(135deg, var(--navy), var(--primary));
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
         }
-        
         .btn-open-modal i {
             margin-right: 8px;
         }
-        
         .btn-edit-modal {
-            background: #456882;
+            background: var(--light-blue);
             color: white;
             border: none;
-            padding: 5px 10px;
-            border-radius: 4px;
+            padding: 6px 12px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 12px;
-            transition: background 0.3s;
+            transition: all 0.3s;
         }
-        
         .btn-edit-modal:hover {
-            background: #2c4e6e;
+            background: var(--primary-light);
+            transform: translateY(-1px);
         }
-        
         .btn-delete {
-            background: #dc2626;
+            background: var(--danger);
             color: white;
-            padding: 5px 10px;
-            border-radius: 4px;
+            padding: 6px 12px;
+            border-radius: 6px;
             text-decoration: none;
             font-size: 12px;
             display: inline-flex;
             align-items: center;
             gap: 4px;
+            transition: all 0.3s;
         }
-        
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.5);
-            animation: fadeIn 0.3s;
+        .btn-delete:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
         }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
         .modal-content {
-            background-color: #fff;
-            margin: 5% auto;
-            padding: 0;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 500px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
-            animation: slideDown 0.3s;
-            overflow: visible;
+            background-color: var(--off-white);
         }
-        
-        @keyframes slideDown {
-            from {
-                transform: translateY(-50px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-        
         .modal-header {
-            padding: 15px 20px;
-            background: #1B3C53;
-            color: white;
-            border-radius: 12px 12px 0 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            background: linear-gradient(135deg, var(--primary), var(--navy));
         }
-        
-        .modal-header h2 {
-            margin: 0;
-            font-size: 1.2rem;
-        }
-        
-        .modal-header h2 i {
-            margin-right: 10px;
-        }
-        
-        .close-modal {
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.3s;
-        }
-        
-        .close-modal:hover {
-            color: #ddd;
-            transform: scale(1.1);
-        }
-        
-        .modal-body {
-            padding: 25px;
-            overflow: visible;
-        }
-        
         .modal-body .btn-submit {
-            background: #1B3C53;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: background 0.3s;
-            width: auto;
-            display: inline-block;
+            background: linear-gradient(135deg, var(--primary), var(--navy));
         }
-        
         .modal-body .btn-submit:hover {
-            background: #0f2a3a;
+            background: linear-gradient(135deg, var(--navy), var(--primary));
         }
-        
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
+        .btn-cancel-modal {
+            background: var(--light-blue);
         }
-        
-        .form-group {
-            display: flex;
-            flex-direction: column;
+        .btn-cancel-modal:hover {
+            background: var(--primary-light);
         }
-        
-        .form-group label {
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-            font-size: 14px;
-        }
-        
         .form-group label i {
-            margin-right: 8px;
-            color: #1B3C53;
+            color: var(--primary);
         }
-        
         .form-group input,
         .form-group select {
-            padding: 12px 14px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 14px;
-            transition: border-color 0.3s;
+            border: 1.5px solid var(--secondary);
+            border-radius: 10px;
         }
-        
         .form-group input:focus,
         .form-group select:focus {
-            outline: none;
-            border-color: #1B3C53;
-            box-shadow: 0 0 0 2px rgba(27, 60, 83, 0.1);
+            border-color: var(--primary-light);
+            box-shadow: 0 0 0 2px rgba(143, 186, 243, 0.2);
         }
-        
-        .readonly-display {
-            background-color: #f5f5f5;
-            padding: 12px 14px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            color: #666;
-            font-size: 14px;
-        }
-        
-        small {
-            font-size: 11px;
-            color: #666;
-            margin-top: 5px;
-        }
-        
-        .button-container {
-            text-align: left;
-            margin-top: 10px;
-            display: flex;
-            gap: 10px;
-        }
-        
-        .loading-spinner {
-            text-align: center;
-            padding: 40px;
-            display: none;
-        }
-        
-        .loading-spinner i {
-            font-size: 40px;
-            color: #1B3C53;
-        }
-        
-        .edit-form-container {
-            display: block;
-        }
-        
-        .edit-form-container.hide {
-            display: none;
-        }
-        
-        .alert-success-modal, .alert-error-modal {
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-            display: none;
-        }
-        
-        .alert-success-modal {
-            background: #d4edda;
-            color: #155724;
-            border-left: 4px solid #28a745;
-        }
-        
-        .alert-error-modal {
-            background: #f8d7da;
-            color: #721c24;
-            border-left: 4px solid #dc3545;
-        }
-        
-        .action-buttons {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        
-        .btn-cancel-modal {
-            background: #6c757d;
+        .role-badge {
+            background: linear-gradient(135deg, var(--primary), var(--navy));
             color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: background 0.3s;
-        }
-        
-        .btn-cancel-modal:hover {
-            background: #5a6268;
-        }
-        
-        .password-hint {
+            padding: 4px 10px;
+            border-radius: 20px;
             font-size: 11px;
-            color: #666;
-            margin-top: 5px;
+            font-weight: 600;
         }
     </style>
 </head>
@@ -500,14 +314,14 @@ if (isset($_GET['msg'])) {
             
             <div class="info-box">
                 <i class="fas fa-info-circle"></i> 
-                You are managing users under: <strong><?= htmlspecialchars($current_user['division']) ?> / <?= htmlspecialchars($current_user['department']) ?> / <?= htmlspecialchars($current_user['section']) ?> / <?= htmlspecialchars($current_user['unit']) ?></strong>
+                You are managing users under: <strong><?= htmlspecialchars($current_user['division']) ?> / <?= htmlspecialchars($current_user['department']) ?></strong>
             </div>
             
             <?php if ($success_msg): ?>
-                <div class="alert-success"><i class="fas fa-check-circle"></i> <?= $success_msg ?></div>
+                <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?= $success_msg ?></div>
             <?php endif; ?>
             <?php if ($error_msg): ?>
-                <div class="alert-error"><i class="fas fa-exclamation-triangle"></i> <?= $error_msg ?></div>
+                <div class="alert alert-error"><i class="fas fa-exclamation-triangle"></i> <?= $error_msg ?></div>
             <?php endif; ?>
             
             <!-- Add User Button -->
@@ -555,8 +369,8 @@ if (isset($_GET['msg'])) {
                             
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label><i class="fas fa-sitemap"></i> Department/Section/Unit *</label>
-                                    <div class="readonly-display"><?= htmlspecialchars($current_user['department']) ?> / <?= htmlspecialchars($current_user['section']) ?> / <?= htmlspecialchars($current_user['unit']) ?></div>
+                                    <label><i class="fas fa-sitemap"></i> Department *</label>
+                                    <div class="readonly-display"><?= htmlspecialchars($current_user['department']) ?></div>
                                 </div>
                             </div>
                             
@@ -637,7 +451,7 @@ if (isset($_GET['msg'])) {
             </div>
             
             <div class="data-table">
-                <h3><i class="fas fa-list"></i> Users Under <?= htmlspecialchars($current_user['department']) ?> / <?= htmlspecialchars($current_user['section']) ?> / <?= htmlspecialchars($current_user['unit']) ?> (<?= count($users) ?>)</h3>
+                <h3><i class="fas fa-list"></i> Users Under <?= htmlspecialchars($current_user['department']) ?> (<?= count($users) ?>)</h3>
                 <table>
                     <thead>
                         <tr>
@@ -646,15 +460,14 @@ if (isset($_GET['msg'])) {
                             <th>Email</th>
                             <th>Role</th>
                             <th>Division</th>
-                            <th>Department/Section/Unit</th>
+                            <th>Department</th>
                             <th>Date Added</th>
                             <th>Actions</th>
-                        </tr>
-                    </thead>
+                         </thead>
                     <tbody>
                         <?php if (empty($users)): ?>
                             <tr>
-                                <td colspan="8" style="text-align: center;">No users found in your unit. Add your first user above.</td>
+                                <td colspan="8" style="text-align: center;">No users found in your unit. Add your first user above.</div>
                             </tr>
                         <?php endif; ?>
                         <?php foreach ($users as $user): ?>
@@ -662,13 +475,9 @@ if (isset($_GET['msg'])) {
                                 <td><?= $user['id'] ?></td>
                                 <td><?= htmlspecialchars($user['full_name'] ?? '') ?></td>
                                 <td><?= htmlspecialchars($user['email']) ?></td>
-                                <td>
-                                    <span style="background: #1B3C53; color: white; padding: 3px 8px; border-radius: 3px; font-size: 12px;">
-                                        <?= $user['role'] ?>
-                                    </span>
-                                </td>
+                                <td><span class="role-badge"><?= ucfirst($user['role']) ?></span></td>
                                 <td><?= htmlspecialchars($user['division'] ?? '') ?></td>
-                                <td><?= htmlspecialchars(($user['department'] ?? '') . ' / ' . ($user['section'] ?? '') . ' / ' . ($user['unit'] ?? '')) ?></td>
+                                <td><?= htmlspecialchars($user['department'] ?? '') ?></td>
                                 <td><?= date('M d, Y', strtotime($user['created_at'])) ?></td>
                                 <td class="action-buttons">
                                     <button onclick="openEditModal(<?= $user['id'] ?>)" class="btn-edit-modal">
@@ -679,7 +488,7 @@ if (isset($_GET['msg'])) {
                                             <i class="fas fa-trash-alt"></i> Delete
                                         </a>
                                     <?php endif; ?>
-                                </td>
+                                 </div>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -698,7 +507,6 @@ if (isset($_GET['msg'])) {
         function closeAddModal() {
             document.getElementById('addModal').style.display = 'none';
             document.body.style.overflow = 'auto';
-            // Reset form
             document.getElementById('addUserForm').reset();
         }
         
@@ -713,13 +521,11 @@ if (isset($_GET['msg'])) {
             modal.style.display = 'block';
             document.body.style.overflow = 'hidden';
             
-            // Reset and show loading
             loading.style.display = 'block';
             formContainer.classList.add('hide');
             alertSuccess.style.display = 'none';
             alertError.style.display = 'none';
             
-            // Fetch user data
             fetch('?ajax_get_user=' + id)
                 .then(response => response.json())
                 .then(data => {
@@ -754,7 +560,6 @@ if (isset($_GET['msg'])) {
             var alertError = document.getElementById('editAlertError');
             var submitBtn = document.querySelector('#editFormContainer .btn-submit');
             
-            // Validate email
             var email = document.getElementById('edit_email').value;
             if (!email) {
                 alertError.querySelector('#editErrorMsg').textContent = 'Email is required';
@@ -762,7 +567,6 @@ if (isset($_GET['msg'])) {
                 return;
             }
             
-            // Validate full name
             var fullName = document.getElementById('edit_full_name').value;
             if (!fullName) {
                 alertError.querySelector('#editErrorMsg').textContent = 'Full Name is required';
@@ -770,7 +574,6 @@ if (isset($_GET['msg'])) {
                 return;
             }
             
-            // Disable button and show loading
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Updating...';
             
@@ -788,7 +591,6 @@ if (isset($_GET['msg'])) {
                     alertSuccess.style.display = 'block';
                     alertError.style.display = 'none';
                     
-                    // Reload page after 1.5 seconds to show updated data
                     setTimeout(function() {
                         location.reload();
                     }, 1500);
@@ -812,7 +614,6 @@ if (isset($_GET['msg'])) {
             document.body.style.overflow = 'auto';
         }
         
-        // Close modals when clicking outside
         window.onclick = function(event) {
             var addModal = document.getElementById('addModal');
             var editModal = document.getElementById('editModal');

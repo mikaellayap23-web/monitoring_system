@@ -219,7 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_training'])) {
                     </div>
                     
                     <button type="submit" name="edit_training" class="btn-submit"><i class="fas fa-save"></i> Update Training</button>
-                    <a href="training_list.php" class="btn-submit" style="background: #666; text-decoration: none;"><i class="fas fa-times"></i> Cancel</a>
+                    <a href="training_list.php" class="btn-submit" style="background: #1A3D64; text-decoration: none;"><i class="fas fa-times"></i> Cancel</a>
                 </form>
             </div>
         </div>
